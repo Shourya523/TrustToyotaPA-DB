@@ -7,6 +7,8 @@ import { Input } from "@/src/components/ui/input";
 import { checkEmbeddingStatus, embedDocumentationData, chatWithSchema } from "@/src/actions/chat";
 // @ts-ignore
 import ReactMarkdown from "react-markdown";
+// @ts-ignore
+import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
 
 import {
@@ -239,6 +241,7 @@ export function ChatTab({ connectionId }: { connectionId: string }) {
                                 <p className="whitespace-pre-wrap">{msg.content}</p>
                             ) : (
                                 <ReactMarkdown
+                                    remarkPlugins={[remarkGfm]}
                                     components={{
                                         p: ({ node, children, ...props }) => {
                                             // Intercept text containing [1], [2], etc.
@@ -331,7 +334,17 @@ export function ChatTab({ connectionId }: { connectionId: string }) {
                                         code: ({ node, ...props }) => <code className="bg-background border border-border/50 text-blue-600 dark:text-blue-400 px-1 py-0.5 rounded text-xs font-mono" {...props} />,
                                         pre: ({ node, ...props }) => <pre className="bg-zinc-950 p-4 rounded-lg overflow-x-auto my-4 border border-zinc-800 text-zinc-50" {...props} />,
                                         ul: ({ node, ...props }) => <ul className="list-disc ml-4 my-3 [&>li]:mt-1" {...props} />,
-                                        strong: ({ node, ...props }) => <strong className="font-bold text-foreground" {...props} />
+                                        strong: ({ node, ...props }) => <strong className="font-bold text-foreground" {...props} />,
+                                        table: ({ node, ...props }) => (
+                                            <div className="my-4 w-full overflow-x-auto rounded-xl border border-border bg-card/30 backdrop-blur-xs shadow-xs">
+                                                <table className="w-full text-xs text-left border-collapse" {...props} />
+                                            </div>
+                                        ),
+                                        thead: ({ node, ...props }) => <thead className="bg-muted/40 text-muted-foreground text-[10px] font-semibold tracking-wider uppercase border-b border-border" {...props} />,
+                                        th: ({ node, ...props }) => <th className="px-4 py-2.5 font-semibold text-foreground/90" {...props} />,
+                                        tbody: ({ node, ...props }) => <tbody className="divide-y divide-border/30" {...props} />,
+                                        tr: ({ node, ...props }) => <tr className="hover:bg-muted/10 transition-colors duration-150" {...props} />,
+                                        td: ({ node, ...props }) => <td className="px-4 py-2 text-muted-foreground align-middle font-normal" {...props} />
                                     }}
                                 >
                                     {msg.content}

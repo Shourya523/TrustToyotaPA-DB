@@ -1,12 +1,12 @@
 "use server";
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { getDatabaseMetadata } from "./db";
+import { getDatabaseMetadata, getConnectionStringById } from "./db";
 import { qdrant, COLLECTION_NAME } from "../lib/qdrant";
 import { v5 as uuidv5 } from "uuid";
 import { db } from "../db";
-import { entities, fields, relationships, schemaKnowledge } from "../db/schema";
-import { eq, inArray } from "drizzle-orm";
+import { entities, fields, relationships, schemaKnowledge, connections } from "../db/schema";
+import { eq, inArray, and } from "drizzle-orm";
 import { getSession } from "../lib/neo4j";
 import { generateDocumentationImages, saveImageMetadata } from "./puppeteerGenerator";
 
@@ -42,7 +42,7 @@ export async function syncAIDocumentation(connectionId: string) {
 
         // 3. Setup Gemini Model instance with strict parameters
         const model = genAI.getGenerativeModel({
-            model: "gemini-3-flash",
+            model: "gemini-2.5-flash",
             systemInstruction: `You are a senior enterprise data architect and technical documentation expert.
 
 Your task is to generate high-quality, professional database documentation in clean Markdown format.
@@ -178,6 +178,14 @@ Return Markdown only.`
             }
         }
 
+        try {
+            const sessionUser = await db.select({ userId: connections.userId }).from(connections).where(eq(connections.id, connectionId)).limit(1);
+            const userId = sessionUser[0]?.userId || "";
+            await getOrGenerateBusinessReport(connectionId, userId);
+        } catch (e) {
+            console.error(e);
+        }
+
         return { success: true, message: `Successfully generated documentation for ${dbEntities.length} tables.` };
 
     } catch (error: any) {
@@ -276,7 +284,7 @@ export async function askAiAction(userQuestion: string, connectionId: string) {
             .join("\n");
 
         const model = genAI.getGenerativeModel({
-            model: "gemini-3-flash",
+            model: "gemini-2.5-flash",
             systemInstruction: `You are a PostgreSQL expert. Given a schema, write a query. 
             CRITICAL: Large dataset detected (500k+ rows). Always append 'LIMIT 100' 
             to SELECT statements to prevent timeouts.`
@@ -299,5 +307,137 @@ export async function askAiAction(userQuestion: string, connectionId: string) {
     } catch (e: any) {
         console.error("AI Action Error:", e);
         return { success: false, error: e.message };
+    }
+}
+
+export async function getOrGenerateBusinessReport(connectionId: string, userId: string) {
+    if (!connectionId) return { success: false, error: "Connection ID required." };
+    try {
+        const [cached] = await db
+            .select()
+            .from(schemaKnowledge)
+            .where(
+                and(
+                    eq(schemaKnowledge.connectionId, connectionId),
+                    eq(schemaKnowledge.entityName, "__business_report__")
+                )
+            )
+            .limit(1);
+        if (cached) {
+            try {
+                const parsed = JSON.parse(cached.markdownContent);
+                return { success: true, data: parsed };
+            } catch (err) {
+            }
+        }
+        const dbEntities = await db
+            .select()
+            .from(entities)
+            .where(eq(entities.connectionId, connectionId));
+        if (dbEntities.length === 0) {
+            return { success: false, error: "No metadata found. Please SYNC AI first." };
+        }
+        const entityIds = dbEntities.map(e => e.id);
+        const dbFields = await db
+            .select()
+            .from(fields)
+            .where(inArray(fields.entityId, entityIds));
+        const connString = await getConnectionStringById(connectionId, userId);
+        let rowCounts: Record<string, number> = {};
+        let relationsCount = 0;
+        let dbMetadataResult = null;
+        if (connString) {
+            dbMetadataResult = await getDatabaseMetadata(connString);
+            if (dbMetadataResult.success && dbMetadataResult.data) {
+                const counts = dbMetadataResult.data.counts || [];
+                counts.forEach((c: any) => {
+                    rowCounts[c.table_name || c.TABLE_NAME] = parseInt(c.row_count || c.ROW_COUNT || 0);
+                });
+                const schema = dbMetadataResult.data.schema || [];
+                const seenFks = new Set();
+                schema.forEach((col: any) => {
+                    if (col.is_foreign_key && col.foreign_table_name) {
+                        seenFks.add(`${col.table_name}->${col.foreign_table_name}`);
+                    }
+                });
+                relationsCount = seenFks.size;
+            }
+        }
+        const tableCount = dbEntities.length;
+        const columnCount = dbFields.length;
+        const totalRows = Object.values(rowCounts).reduce((a, b) => a + b, 0);
+        const piiKeywords = ["email", "phone", "ssn", "address", "password", "card", "cvv", "mobile", "secret", "token"];
+        const piiColumns = dbFields.filter(f => 
+            piiKeywords.some(kw => f.name.toLowerCase().includes(kw))
+        );
+        const piiCount = piiColumns.length;
+        const schemaSummary = dbEntities.map(entity => {
+            const tableFields = dbFields.filter(f => f.entityId === entity.id);
+            const columnsStr = tableFields.map(f => `${f.name} (${f.type}${f.isNullable ? '' : ' NOT NULL'}${f.isPrimaryKey ? ' PK' : ''})`).join(", ");
+            const rows = rowCounts[entity.name] || 0;
+            return `Table "${entity.name}" (${rows} rows): [${columnsStr}]`;
+        }).join("\n");
+        const systemPrompt = `You are a senior enterprise data architect and data quality auditor.
+Your task is to analyze the provided database schema metadata and generate a comprehensive Business Report in JSON format.
+
+The JSON response MUST exactly match the following structure:
+{
+  "domain": "string (e.g. Music Retail / Digital Media, eCommerce, etc.)",
+  "overview": "string (1-2 sentences overview of the database purpose)",
+  "keyFindings": ["string", "string", "string", "string"],
+  "recommendations": ["string", "string", "string", "string"],
+  "dataGovernance": "string (governance paragraph addressing PII, security, access control)",
+  "overallAssessment": "string (one-sentence overall assessment of the database state)",
+  "healthScore": number (health score percentage between 50 and 100),
+  "qualityIssues": [
+    {
+      "severity": "critical" or "warning",
+      "table": "string (table name)",
+      "column": "string (column name)",
+      "issue": "string (short description of the issue, e.g. Column 'Company' has 83.05% null values)",
+      "suggestion": "string (remediation suggestion, e.g. Consider making 'Company' NOT NULL or implementing a default value strategy.)"
+    }
+  ]
+}
+
+Strict Rules:
+- Output valid JSON only. Do NOT include markdown code blocks like \`\`\`json.
+- No commentary or additional keys.
+- Estimate realistic quality issues based on schema patterns (e.g. missing primary keys, columns with names like 'Company' or 'Fax' or 'Composer' having warnings if they are nullable, table names without relationships, or fields representing passwords that should be protected).`;
+
+        const prompt = `Analyze this database schema and generate the Business Report JSON:\n\n${schemaSummary}`;
+        const model = genAI.getGenerativeModel({
+            model: "gemini-2.5-flash",
+            systemInstruction: systemPrompt
+        });
+        const result = await model.generateContent(prompt);
+        let textResult = result.response.text();
+        textResult = textResult.replace(/^```json\n/, "").replace(/^```\n/, "").replace(/\n```$/, "");
+        const parsedReport = JSON.parse(textResult);
+        parsedReport.tableCount = tableCount;
+        parsedReport.columnCount = columnCount;
+        parsedReport.totalRows = totalRows;
+        parsedReport.piiCount = piiCount;
+        parsedReport.relationsCount = relationsCount;
+        const criticalCount = parsedReport.qualityIssues.filter((q: any) => q.severity === "critical").length;
+        const warningCount = parsedReport.qualityIssues.filter((q: any) => q.severity === "warning").length;
+        const calculatedHealth = Math.max(50, Math.min(100, 100 - (criticalCount * 4) - (warningCount * 1.5)));
+        parsedReport.healthScore = parseFloat(calculatedHealth.toFixed(1));
+        await db
+            .insert(schemaKnowledge)
+            .values({
+                connectionId: connectionId,
+                entityName: "__business_report__",
+                markdownContent: JSON.stringify(parsedReport),
+                updatedAt: new Date()
+            })
+            .onConflictDoUpdate({
+                target: [schemaKnowledge.connectionId, schemaKnowledge.entityName],
+                set: { markdownContent: JSON.stringify(parsedReport), updatedAt: new Date() }
+            });
+        return { success: true, data: parsedReport };
+    } catch (error: any) {
+        console.error("Failed to get or generate business report:", error);
+        return { success: false, error: error.message };
     }
 }
