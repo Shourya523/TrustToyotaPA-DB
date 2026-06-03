@@ -9,7 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@better-auth/infra": "^0.2.11",
     "@fontsource/albert-sans": "^5.2.8",
     "@google/generative-ai": "^0.24.1",
     "@hookform/resolvers": "^5.2.2",
