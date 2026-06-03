@@ -178,6 +178,21 @@ CREATE (p)-[:ACTED_IN {role:'Neo'}]->(m);
 
 ---
 
+# 🔌 VS Code / Cursor MCP Integration
+
+Use DataLens AI directly in **Cursor** or **VS Code** via the MCP server:
+
+```bash
+cd vscode-extension/mcp-server
+npm install && npm run build
+```
+
+Copy `.cursor/mcp.json.example` to `.cursor/mcp.json` and set your `DATALENS_DATABASE_URL`.
+
+See **[vscode-extension/README.md](vscode-extension/README.md)** for all MCP tools (schema scan, documentation, queries, data quality, AI chat).
+
+---
+
 # ⚙️ Installation
 
 ```bash

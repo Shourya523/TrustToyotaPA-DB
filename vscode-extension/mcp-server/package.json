@@ -1,0 +1,31 @@
+{
+  "name": "@datalens/mcp-server",
+  "version": "0.1.0",
+  "description": "DataLens AI MCP server — schema intelligence, documentation, queries, and data quality",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "datalens-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "dotenv": "^17.3.1",
+    "groq-sdk": "^0.37.0",
+    "mysql2": "^3.17.4",
+    "postgres": "^3.4.8",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

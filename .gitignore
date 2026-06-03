@@ -1,7 +1,7 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
 # dependencies
-/node_modules
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -39,6 +39,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# vscode extension / mcp server build output
+vscode-extension/mcp-server/dist/
+vscode-extension/dist/
+
+# cursor (keep MCP config, ignore other local cursor files)
+.cursor/*
+!.cursor/mcp.json
+!.cursor/mcp.json.example
 
 /scripts
 /data

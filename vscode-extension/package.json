@@ -1,0 +1,81 @@
+{
+  "name": "datalens-ai",
+  "displayName": "DataLens AI",
+  "description": "Database intelligence in VS Code — schema explorer, documentation, queries, and data quality via MCP",
+  "version": "0.1.0",
+  "publisher": "datalens",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other", "Data Science"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "datalens.connectDatabase",
+        "title": "DataLens: Connect to Database"
+      },
+      {
+        "command": "datalens.openSchemaExplorer",
+        "title": "DataLens: Open Schema Explorer"
+      },
+      {
+        "command": "datalens.configureMcp",
+        "title": "DataLens: Configure MCP Server"
+      }
+    ],
+    "configuration": {
+      "title": "DataLens AI",
+      "properties": {
+        "datalens.databaseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Default database connection URI (postgresql:// or mysql://). Stored in workspace settings.",
+          "scope": "resource"
+        },
+        "datalens.geminiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Gemini API key for documentation generation and AI queries"
+        },
+        "datalens.groqApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Groq API key for schema chat and query analysis"
+        },
+        "datalens.mcpServerPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to datalens-mcp server entry (dist/index.js). Auto-detected if empty."
+        }
+      }
+    },
+    "mcp": {
+      "servers": {
+        "datalens": {
+          "type": "stdio",
+          "command": "node",
+          "args": ["${workspaceFolder}/vscode-extension/mcp-server/dist/index.js"],
+          "env": {
+            "DATALENS_DATABASE_URL": "${config:datalens.databaseUrl}",
+            "GEMINI_API_KEY": "${config:datalens.geminiApiKey}",
+            "GROQ_API_KEY": "${config:datalens.groqApiKey}"
+          }
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package",
+    "build:mcp": "cd mcp-server && npm install && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5"
+  }
+}

@@ -1,6 +1,8 @@
-# 🔌 DataLens AI: VS Code Extension Design & Implementation Guide
+# 🔌 DataLens AI: VS Code Extension & MCP Server
 
-This directory documents the blueprint, architecture, and step-by-step implementation guide for porting the **DataLens AI** web application into a native **VS Code Extension**. 
+> **Implementation lives in [`../vscode-extension/`](../vscode-extension/)** — MCP server + VS Code extension package.
+
+This directory documents the original blueprint. The working MCP server and extension are in `vscode-extension/`. See **[vscode-extension/README.md](../vscode-extension/README.md)** for setup.
 
 By integrating DataLens AI directly into the IDE, developers can visualize schemas, inspect graph relationships, and chat with their database metadata without leaving their active coding workspace.
 
