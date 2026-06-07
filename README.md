@@ -184,6 +184,34 @@ See **[vscode/README.md](vscode/README.md)** for Cursor, VS Code, and Antigravit
 
 ---
 
+# 🤖 Interactive AI Agent CLI
+
+DataLens AI features an interactive, session-based terminal AI Agent that can explore your database schema, check data quality, and **automatically write Next.js Route Handlers** (`src/app/api/custom/[slug]/route.ts`) to expose custom data endpoints on the fly.
+
+### ✨ Features
+*   **Persistent Session Chat:** Remembers your schema structure, tables, and past commands during the conversation.
+*   **Database Inspection:** Uses tools to scan columns, types, and keys directly.
+*   **Dynamic Endpoint Generation:** Code-generates clean Next.js GET/POST route handlers that compile and hot-reload in Next.js instantly.
+*   **Endpoint Management:** List and delete dynamically generated endpoints directly using CLI commands.
+*   **Retro Aesthetics:** Custom dot-matrix ASCII logo and an animated terminal spinner.
+
+### ⚙️ Setup & Usage
+1. Add your target database connection ID to your `.env` file (you can find these in the `connections` table):
+   ```env
+   ACTIVE_CONNECTION_ID="your_connection_id"
+   ```
+2. Start the interactive CLI session:
+   ```bash
+   npx tsx scripts/agent-cli.ts
+   ```
+3. Command the agent using natural language prompts:
+   *   *“List my tables”*
+   *   *“Create an authenticated GET endpoint with slug 'total-customers' that returns the count of rows from olist_customers_dataset”*
+   *   *“List all custom API endpoints”*
+   *   *“Delete the endpoint with slug 'total-customers'”*
+
+---
+
 # ⚙️ Installation
 
 ```bash
