@@ -24,24 +24,34 @@ export const agentTools = {
         })),
         execute: async ({ connectionId }) => {
             try {
+                let tableUri = "";
+                let provider = "postgres";
+
                 const [conn] = await db
                     .select()
                     .from(connections)
                     .where(eq(connections.id, connectionId))
                     .limit(1);
 
-                if (!conn) {
-                    return { success: false, error: "Database doesn't exist" };
+                if (conn) {
+                    tableUri = conn.tableUri;
+                    provider = conn.provider;
+                } else {
+                    // Fallback to guest URI
+                    tableUri = process.env.NEXT_PUBLIC_FALLBACK_URI || "";
+                    if (!tableUri) {
+                        return { success: false, error: "Database connection does not exist and no fallback URI is configured." };
+                    }
                 }
 
-                const metadata = await getDatabaseMetadata(conn.tableUri);
+                const metadata = await getDatabaseMetadata(tableUri);
                 if (!metadata.success) {
                     return { success: false, error: metadata.error || "Failed to scan metadata" };
                 }
 
                 return {
                     success: true,
-                    provider: conn.provider,
+                    provider: provider,
                     schema: metadata.data?.schema
                 };
             } catch (err: any) {

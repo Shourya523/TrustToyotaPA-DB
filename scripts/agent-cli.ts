@@ -69,7 +69,7 @@ async function main() {
 
             try {
                 const { text, response } = await generateText({
-                    model: google("gemini-2.5-flash"),
+                    model: google("gemini-3.1-flash-lite"),
                     system: `${SYSTEM_PROMPT}\n\nThe current active connectionId is: "${connectionId}".`,
                     messages: messages,
                     tools: agentTools,

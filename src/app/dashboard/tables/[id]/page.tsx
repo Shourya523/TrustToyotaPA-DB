@@ -10,6 +10,7 @@ import { authClient } from "@/src/components/landing/auth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
 import { DocumentationTab } from "@/src/components/dashboard/DocumentationTab";
 import { ChatTab } from "@/src/components/dashboard/ChatTab";
+import { AgentTab } from "@/src/components/dashboard/AgentTab";
 
 interface TableInfo {
   name: string;
@@ -197,15 +198,18 @@ const DashboardTables = ({ params }: { params: Promise<{ id: string }> }) => {
       </div>
 
       <Tabs defaultValue="schema" className="w-full">
-        <TabsList className="mb-6 grid w-full grid-cols-3 lg:w-[600px]">
+        <TabsList className="mb-6 grid w-full grid-cols-4 lg:w-[750px]">
           <TabsTrigger value="schema" className="font-bold text-xs uppercase tracking-wider">
             Schema Explorer
           </TabsTrigger>
           <TabsTrigger value="documentation" className="font-bold text-xs uppercase tracking-wider">
             AI Documentation
           </TabsTrigger>
-          <TabsTrigger value="chat" className="font-bold text-xs uppercase tracking-wider text-blue-600 dark:text-blue-400 data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+          <TabsTrigger value="chat" className="font-bold text-xs uppercase tracking-wider">
             Chat with AI
+          </TabsTrigger>
+          <TabsTrigger value="agent" className="font-bold text-xs uppercase tracking-wider text-blue-600 dark:text-blue-400 data-[state=active]:bg-blue-600 data-[state=active]:text-white">
+            API Agent (Beta)
           </TabsTrigger>
         </TabsList>
 
@@ -287,6 +291,10 @@ const DashboardTables = ({ params }: { params: Promise<{ id: string }> }) => {
 
         <TabsContent value="chat" className="mt-0">
           <ChatTab connectionId={id as string} />
+        </TabsContent>
+
+        <TabsContent value="agent" className="mt-0">
+          <AgentTab connectionId={id as string} />
         </TabsContent>
       </Tabs>
     </DashboardLayout>
