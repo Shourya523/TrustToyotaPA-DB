@@ -76,9 +76,11 @@ export function AgentTab({ connectionId }: { connectionId: string }) {
   }, [connectionId]);
 
   const [input, setInput] = useState("");
+  const [hasLoadedHistory, setHasLoadedHistory] = useState(false);
+  const STORAGE_KEY = `agent_chat_history_${connectionId}`;
 
   // Setup Vercel AI SDK useChat
-  const { messages, sendMessage, status } = useChat({
+  const { messages, sendMessage, status, setMessages } = useChat({
     transport: new DefaultChatTransport({
       api: "/api/agent",
       body: {
@@ -93,6 +95,49 @@ export function AgentTab({ connectionId }: { connectionId: string }) {
       toast.error(err.message || "An error occurred in the Agent stream.");
     }
   });
+
+  // 1. Restore chat history on mount / connectionId change
+  useEffect(() => {
+    setHasLoadedHistory(false);
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setMessages(parsed);
+          setHasLoadedHistory(true);
+          return;
+        }
+      }
+      setMessages([]);
+      setHasLoadedHistory(true);
+    } catch (err) {
+      console.error("Failed to restore agent chat history:", err);
+      setMessages([]);
+      setHasLoadedHistory(true);
+    }
+  }, [connectionId, setMessages]);
+
+  // 2. Save chat history to localStorage when messages change
+  useEffect(() => {
+    if (!hasLoadedHistory) return;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+    } catch (err) {
+      console.error("Failed to save agent chat history:", err);
+    }
+  }, [messages, connectionId, hasLoadedHistory]);
+
+  const clearChat = () => {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      setMessages([]);
+      toast.success("Agent chat history cleared.");
+    } catch (err) {
+      console.error("Failed to clear agent chat:", err);
+      toast.error("Failed to clear chat history.");
+    }
+  };
 
   const isLoading = status === "submitted" || status === "streaming";
 
@@ -201,8 +246,21 @@ export function AgentTab({ connectionId }: { connectionId: string }) {
               <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-mono">Dynamic Endpoints Builder</p>
             </div>
           </div>
-          <div className="text-[10px] bg-muted px-2 py-0.5 rounded border border-border/50 text-muted-foreground font-semibold font-mono">
-            {connectionId.substring(0, 8)}...
+          <div className="flex items-center gap-2">
+            {messages.length > 0 && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={clearChat}
+                className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                title="Clear Chat History"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </Button>
+            )}
+            <div className="text-[10px] bg-muted px-2 py-0.5 rounded border border-border/50 text-muted-foreground font-semibold font-mono">
+              {connectionId.substring(0, 8)}...
+            </div>
           </div>
         </div>
 

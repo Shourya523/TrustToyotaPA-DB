@@ -424,7 +424,7 @@ export async function deleteConnection(connectionId: string, userId: string) {
   }
 }
 
-export async function runCustomQuery(connectionId: string, userId: string | undefined, sqlText: string) {
+export async function runCustomQuery(connectionId: string, userId: string | undefined, sqlText: string, params?: any[]) {
   try {
     const FALLBACK_URI = process.env.NEXT_PUBLIC_FALLBACK_URI!;
     
@@ -441,7 +441,7 @@ export async function runCustomQuery(connectionId: string, userId: string | unde
       const postgres = await getPostgres();
       const sqlConnection = postgres(uri, { max: 1 });
       try {
-        const result = await sqlConnection.unsafe(sqlText);
+        const result = await sqlConnection.unsafe(sqlText, params || []);
         return { success: true, data: JSON.parse(JSON.stringify(result)) };
       } finally {
         await sqlConnection.end();
