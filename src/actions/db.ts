@@ -4,6 +4,7 @@ import { db } from "../db";
 import { connections } from "../db/schema";
 import { revalidatePath } from "next/cache";
 import { eq, and, sql, count, ne, inArray } from "drizzle-orm";
+import { getDefaultDatabaseUri, resolveDatabaseUri, DEFAULT_CONNECTION_ID } from "@/src/lib/database-uri";
 
 // --- Lazy Loader Helpers (Prevents Client-Side Bundle Errors) ---
 const getPostgres = async () => (await import('postgres')).default;
@@ -161,6 +162,23 @@ export async function getDatabaseRelations(uri: string) {
         relations: relations 
       } 
     };
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function getRelationsForConnection(connectionId: string, userId?: string) {
+  try {
+    const uri = await resolveDatabaseUri(connectionId, userId);
+    return getDatabaseRelations(uri);
+  } catch (error: any) {
+    return { success: false, error: error.message };
+  }
+}
+
+export async function resolveConnectionUriAction(connectionId: string, userId?: string) {
+  try {
+    return { success: true, data: await resolveDatabaseUri(connectionId, userId) };
   } catch (error: any) {
     return { success: false, error: error.message };
   }
@@ -426,13 +444,11 @@ export async function deleteConnection(connectionId: string, userId: string) {
 
 export async function runCustomQuery(connectionId: string, userId: string | undefined, sqlText: string, params?: any[]) {
   try {
-    const FALLBACK_URI = process.env.NEXT_PUBLIC_FALLBACK_URI!;
-    
     let uri = "";
-    if (connectionId === "demo-neon-db" || !userId) {
-      uri = FALLBACK_URI;
+    if (connectionId === DEFAULT_CONNECTION_ID || !userId) {
+      uri = getDefaultDatabaseUri();
     } else {
-      uri = await getConnectionStringById(connectionId, userId) || FALLBACK_URI;
+      uri = (await getConnectionStringById(connectionId, userId)) || getDefaultDatabaseUri();
     }
 
     if (!uri) throw new Error("Connection not found");

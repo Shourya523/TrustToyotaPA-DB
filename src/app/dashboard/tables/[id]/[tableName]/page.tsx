@@ -2,14 +2,13 @@
 
 import { useEffect, useState, use } from "react";
 import DashboardLayout from "../../../../../components/dashboard/DashboardLayout";
-import { getSingleTableDetails, getTableRows, getConnectionStringById } from "../../../../../actions/db";
+import { getSingleTableDetails, getTableRows, resolveConnectionUriAction } from "../../../../../actions/db";
 import { ArrowLeft, Loader2, Table2, Database, ChevronDown, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "../../../../../components/ui/badge";
 import { Button } from "../../../../../components/ui/button";
 import { authClient } from "@/src/components/landing/auth";
 
-const FALLBACK_URI = process.env.NEXT_PUBLIC_FALLBACK_URI!;
 
 export default function TableDetailPage({ params }: { params: Promise<{ id: string; tableName: string }> }) {
   const { id, tableName } = use(params);
@@ -23,9 +22,9 @@ export default function TableDetailPage({ params }: { params: Promise<{ id: stri
   const [error, setError] = useState<string | null>(null);
 
   const getEffectiveUri = async () => {
-    if (!session?.user?.id) return FALLBACK_URI;
-    const uri = await getConnectionStringById(id, session.user.id);
-    return uri || FALLBACK_URI;
+    const result = await resolveConnectionUriAction(id, session?.user?.id);
+    if (!result.success || !result.data) throw new Error(result.error || "Connection not found");
+    return result.data;
   };
 
   useEffect(() => {

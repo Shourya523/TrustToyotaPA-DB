@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import DashboardLayout from "../../../components/dashboard/DashboardLayout";
 import { getUserConnections, runCustomQuery, analyzeImpactAction } from "../../../actions/db";
+import { DEFAULT_CONNECTION_ID } from "@/src/lib/database-uri";
 import { getDataQualityMetrics, getStructuralAnalysis } from "../../../actions/dataQuality";
 import { Progress } from "../../../components/ui/progress";
 import { authClient } from "@/src/components/landing/auth";
@@ -10,23 +11,20 @@ import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
 import { Loader2, Play, FileJson, Database, ShieldAlert, Zap, Network, BarChart3, AlertTriangle, CheckCircle2, History, Code2, ScrollText } from "lucide-react";
 
-const DEMO_ID = "demo-neon-db";
+const DEMO_ID = DEFAULT_CONNECTION_ID;
 
 export default function QueryPage() {
   const { data: session } = authClient.useSession();
   const [connections, setConnections] = useState<any[]>([]);
   const [selectedConn, setSelectedConn] = useState(DEMO_ID);
   const [sqlText, setSqlText] = useState(`SELECT 
-    oi.order_id,
-    oi.product_id,
-    oi.seller_id,
-    oi.price,
-    s.seller_city,
-    op.payment_type
-FROM olist_order_items_dataset oi
-JOIN olist_sellers_dataset s ON oi.seller_id = s.seller_id
-LEFT JOIN olist_order_payments_dataset op ON oi.order_id = op.order_id
-LIMIT 10;`);
+    b.city,
+    b.street,
+    COUNT(c.contract_id) AS cars_sold
+FROM branch b
+LEFT JOIN contract c ON c.branch_id = b.branch_id
+GROUP BY b.branch_id, b.city, b.street
+ORDER BY cars_sold DESC;`);
   const [results, setResults] = useState<any[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,7 +44,7 @@ LIMIT 10;`);
         const res = await getUserConnections(session.user.id);
         if (res.success) userConns = res.data || [];
       }
-      setConnections([{ id: DEMO_ID, name: "✨ Demo eCommerce DB" }, ...userConns]);
+      setConnections([{ id: DEMO_ID, name: "Car Showroom Database" }, ...userConns]);
     };
     fetchConns();
   }, [session]);

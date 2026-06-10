@@ -16,8 +16,11 @@ import {
   X,
   PlusCircle,
   CodeXml,
-  LogOut
+  LogOut,
+  Sparkles,
+  ShieldAlert,
 } from "lucide-react";
+import { ThemeToggle } from "../theme-toggle";
 import { useState, useEffect } from "react";
 import { authClient } from "@/src/components/landing/auth";
 
@@ -57,6 +60,8 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
     { label: "Data Quality", icon: BarChart3, path: "/dashboard/quality" },
     // { label: "Compliance", icon: ShieldCheck, path: "/dashboard/compliance" },
     { label: "Lineage", icon: GitBranch, path: "/dashboard/lineage" },
+    { label: "Impact Simulator", icon: ShieldAlert, path: "/dashboard/impact" },
+    { label: "Query", icon: Sparkles, path: "/dashboard/studio" },
     { label: "Query Runner", icon: CodeXml, path: "/dashboard/query" }
 //    { label: "AI Chat", icon: MessageSquare, path: "/dashboard/chat" },
     // { label: "Settings", icon: Settings, path: "/dashboard/settings" },
@@ -192,12 +197,15 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
             <Database className="w-5 h-5 text-primary" />
             <span className="font-bold text-sm">DataLens AI</span>
           </div>
-          <button
-            onClick={() => setIsMobileMenuOpen(true)}
-            className="p-2 rounded-lg bg-sidebar-accent"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <ThemeToggle />
+            <button
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="p-2 rounded-lg bg-sidebar-accent"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+          </div>
         </header>
 
         <main className="flex-1 overflow-x-hidden">

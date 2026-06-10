@@ -2,13 +2,13 @@
 
 import { useState, useEffect } from "react";
 import DashboardLayout from "../../../components/dashboard/DashboardLayout";
-import { getTableQuality, getUserConnections, getDatabaseMetadata, getConnectionStringById } from "../../../actions/db";
+import { getTableQuality, getUserConnections, getDatabaseMetadata, resolveConnectionUriAction } from "../../../actions/db";
+import { DEFAULT_CONNECTION_ID } from "@/src/lib/database-uri";
 import { authClient } from "@/src/components/landing/auth";
 import { Card } from "../../../components/ui/card";
 import { Button } from "../../../components/ui/button";
 import { Loader2, AlertTriangle, CheckCircle2, BarChart3, Sparkles, Database, Search } from "lucide-react";
 
-const FALLBACK_URI = process.env.NEXT_PUBLIC_FALLBACK_URI!;
 
 export default function QualityPage() {
   const { data: session } = authClient.useSession();
@@ -22,7 +22,7 @@ export default function QualityPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [qualityData, setQualityData] = useState<any>(null);
 
-  const DEMO_ID = "demo-neon-db";
+  const DEMO_ID = DEFAULT_CONNECTION_ID;
 
   useEffect(() => {
     const fetchConns = async () => {
@@ -31,20 +31,16 @@ export default function QualityPage() {
         const res = await getUserConnections(session.user.id);
         if (res.success) userConns = res.data || [];
       }
-      const demoConn = { id: DEMO_ID, name: "Demo eCommerce Database (Neon)", isDemo: true };
+      const demoConn = { id: DEMO_ID, name: "Car Showroom Database (Neon)", isDemo: true };
       setConnections([demoConn, ...userConns]);
     };
     fetchConns();
   }, [session]);
 
   const getEffectiveUri = async (connId: string) => {
-    if (connId === DEMO_ID) return FALLBACK_URI;
-    const conn = connections.find(c => c.id === connId);
-    if (session?.user?.id) {
-      const vaultUri = await getConnectionStringById(connId, session.user.id);
-      return vaultUri || conn?.tableUri;
-    }
-    return conn?.tableUri;
+    const result = await resolveConnectionUriAction(connId, session?.user?.id);
+    if (!result.success || !result.data) throw new Error(result.error || "Connection not found");
+    return result.data;
   };
 
   const fetchTables = async (connId: string) => {

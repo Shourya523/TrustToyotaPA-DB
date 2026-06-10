@@ -4,7 +4,7 @@ import { useEffect, useState, use } from "react";
 import DashboardLayout from "../../../../components/dashboard/DashboardLayout";
 import { Table2, Eye, Loader2, AlertCircle, Database, ArrowLeft, RefreshCw, Sparkles, Check } from "lucide-react";
 import Link from "next/link";
-import { getDatabaseMetadata, getConnectionStringById } from "../../../../actions/db";
+import { getDatabaseMetadata, resolveConnectionUriAction } from "../../../../actions/db";
 import { Button } from "@/src/components/ui/button";
 import { authClient } from "@/src/components/landing/auth";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/tabs";
@@ -17,7 +17,6 @@ interface TableInfo {
   columns: string[];
   rowCount: number;
 }
-const FALLBACK_URI = process.env.NEXT_PUBLIC_FALLBACK_URI!;
 
 const DashboardTables = ({ params }: { params: Promise<{ id: string }> }) => {
   const { id } = use(params);
@@ -31,9 +30,9 @@ const DashboardTables = ({ params }: { params: Promise<{ id: string }> }) => {
   const [isGeneratingGraph, setIsGeneratingGraph] = useState(false);
 
   const getEffectiveUri = async () => {
-    if (!session?.user?.id) return FALLBACK_URI;
-    const uri = await getConnectionStringById(id, session.user.id);
-    return uri || FALLBACK_URI;
+    const result = await resolveConnectionUriAction(id, session?.user?.id);
+    if (!result.success || !result.data) throw new Error(result.error || "Connection not found");
+    return result.data;
   };
 
   const loadMetadata = async () => {
@@ -98,12 +97,15 @@ const DashboardTables = ({ params }: { params: Promise<{ id: string }> }) => {
       const tableSync = await syncTableMetadata(id, Object.values(organized));
       if (!tableSync.success) throw new Error(tableSync.error || "Table sync failed");
 
-      // 2. Sync AI Documentation
+      // 2. Sync AI Documentation and Index for Text-to-SQL
       setSyncStatus('syncing-ai');
-      const { syncAIDocumentation } = await import('../../../../actions/rag');
-      const aiSync = await syncAIDocumentation(id);
+      const { syncAIDocumentation, indexRemoteDatabase } = await import('../../../../actions/rag');
       
+      const aiSync = await syncAIDocumentation(id);
       if (!aiSync.success) throw new Error(aiSync.error || "AI sync failed");
+
+      const indexSync = await indexRemoteDatabase(id, connString);
+      if (!indexSync.success) throw new Error(indexSync.error || "Qdrant index failed");
 
       setSyncStatus('completed');
       toast.success("Database and AI successfully synchronized");

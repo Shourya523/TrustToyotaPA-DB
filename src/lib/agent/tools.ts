@@ -37,10 +37,9 @@ export const agentTools = {
                     tableUri = conn.tableUri;
                     provider = conn.provider;
                 } else {
-                    // Fallback to guest URI
-                    tableUri = process.env.NEXT_PUBLIC_FALLBACK_URI || "";
+                    tableUri = process.env.DATABASE_URL || "";
                     if (!tableUri) {
-                        return { success: false, error: "Database connection does not exist and no fallback URI is configured." };
+                        return { success: false, error: "Database connection does not exist and DATABASE_URL is not configured." };
                     }
                 }
 

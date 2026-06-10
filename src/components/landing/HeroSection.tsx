@@ -4,12 +4,17 @@ import Link from "next/link";
 import { Button } from "../ui/button";
 import { ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
+import { useTheme } from "next-themes";
+import { useEffect, useState } from "react";
 import RotatingEarth from "./wireframe-dotted-globe";
 
 const HeroSection = () => {
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const isDark = mounted && resolvedTheme === "dark";
   return (
-    <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden bg-[#050505]">
-      {/* Background Globe */}
+    <section className="relative min-h-screen flex items-center justify-center pt-20 overflow-hidden bg-background dark:bg-[#050505]">
       <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
         <motion.div
           initial={{ opacity: 0 }}
@@ -17,9 +22,8 @@ const HeroSection = () => {
           transition={{ duration: 2 }}
           className="relative"
         >
-          {/* Subtle Glow behind the globe */}
           <div className="absolute inset-0 bg-primary/10 blur-[120px] rounded-full" />
-          <RotatingEarth width={900} height={900} />
+          <RotatingEarth width={900} height={900} isDark={isDark} />
         </motion.div>
       </div>
 
@@ -34,13 +38,13 @@ const HeroSection = () => {
             Intelligent Data Dictionary Agent
           </p>
 
-          <h1 className="text-5xl md:text-8xl font-bold tracking-tighter leading-[0.9] mb-8 text-white">
+          <h1 className="text-5xl md:text-8xl font-bold tracking-tighter leading-[0.9] mb-8 text-foreground">
             Understand your
             <br />
-            data <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">instantly.</span>
+            data <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-cyan-500 dark:from-emerald-400 dark:to-cyan-400">instantly.</span>
           </h1>
 
-          <p className="text-lg text-zinc-400 max-w-xl mx-auto mb-12 leading-relaxed">
+          <p className="text-lg text-muted-foreground max-w-xl mx-auto mb-12 leading-relaxed">
             Auto-document schemas, audit data quality, chat with AI, export reports,
             and integrate with Cursor — all from one intelligent data dictionary.
           </p>
@@ -53,26 +57,24 @@ const HeroSection = () => {
               </Button>
             </Link>
             <a href="#showcase">
-              <Button size="lg" variant="ghost" className="h-14 px-10 rounded-full font-bold text-base text-white hover:bg-white/5">
+              <Button size="lg" variant="ghost" className="h-14 px-10 rounded-full font-bold text-base text-foreground hover:bg-muted">
                 See Features
               </Button>
             </a>
           </div>
         </motion.div>
 
-        {/* Minimal Dashboard Mockup */}
         <motion.div
           initial={{ opacity: 0, y: 50 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 1, delay: 0.4 }}
           className="mt-20 max-w-5xl mx-auto"
         >
-          <div className="rounded-3xl border border-white/10 bg-zinc-900/40 backdrop-blur-2xl p-8 shadow-2xl relative">
-             {/* Decorative Dots */}
+          <div className="rounded-3xl border border-border bg-card/60 backdrop-blur-2xl p-8 shadow-2xl relative">
             <div className="flex gap-2 mb-8">
-              <div className="w-3 h-3 rounded-full bg-zinc-700" />
-              <div className="w-3 h-3 rounded-full bg-zinc-700" />
-              <div className="w-3 h-3 rounded-full bg-zinc-700" />
+              <div className="w-3 h-3 rounded-full bg-muted-foreground/30" />
+              <div className="w-3 h-3 rounded-full bg-muted-foreground/30" />
+              <div className="w-3 h-3 rounded-full bg-muted-foreground/30" />
             </div>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
@@ -82,9 +84,9 @@ const HeroSection = () => {
                 { label: "Export Formats", value: "4" },
                 { label: "Time to Insight", value: "<30s" },
               ].map((s) => (
-                <div key={s.label} className="text-left border-l border-white/10 pl-6">
-                  <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold mb-2">{s.label}</p>
-                  <p className="text-3xl font-bold text-white tracking-tight">{s.value}</p>
+                <div key={s.label} className="text-left border-l border-border pl-6">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold mb-2">{s.label}</p>
+                  <p className="text-3xl font-bold text-foreground tracking-tight">{s.value}</p>
                 </div>
               ))}
             </div>

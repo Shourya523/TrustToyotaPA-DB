@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { getUserConnections, deleteConnection } from "../../../actions/db";
+import { DEFAULT_CONNECTION_ID } from "@/src/lib/database-uri";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import { authClient } from "@/src/components/landing/auth";
@@ -34,8 +35,8 @@ export default function ConnectionsPage() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const DEMO_CONNECTION = {
-    id: "demo-neon-db",
-    name: "Demo eCommerce Database",
+    id: DEFAULT_CONNECTION_ID,
+    name: "Car Showroom Database",
     provider: "PostgreSQL (Neon)",
     isDemo: true
   };
@@ -62,7 +63,7 @@ export default function ConnectionsPage() {
 
   const handleDelete = async (id: string) => {
     if (!session?.user?.id) return;
-    if (id === "demo-neon-db") {
+    if (id === DEFAULT_CONNECTION_ID) {
       alert("The demo database cannot be deleted.");
       return;
     }
