@@ -43,11 +43,12 @@ type ShowroomDetailPanelProps = {
   stats: BranchStats & { reportMonth: string };
   loading?: boolean;
   onBack: () => void;
+  onBackToOverview?: () => void;
 };
 
 const PIE_COLORS = ["hsl(145 72% 45%)", "hsl(200 70% 50%)", "hsl(280 60% 55%)"];
 
-export default function ShowroomDetailPanel({ stats, loading, onBack }: ShowroomDetailPanelProps) {
+export default function ShowroomDetailPanel({ stats, loading, onBack, onBackToOverview }: ShowroomDetailPanelProps) {
   const { branch, reportMonth, sales } = stats;
   const topPerformer = sales.find((s) => s.carsSold > 0) ?? sales[0];
 
@@ -74,13 +75,27 @@ export default function ShowroomDetailPanel({ stats, loading, onBack }: Showroom
       className="space-y-6"
     >
       <div>
-        <button
-          onClick={onBack}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors mb-3"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          Back to {branch.city}
-        </button>
+        <div className="flex items-center gap-4 mb-3">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            Back to {branch.city}
+          </button>
+          {onBackToOverview && (
+            <>
+              <span className="text-muted-foreground/30">•</span>
+              <button
+                onClick={onBackToOverview}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+              >
+                <MapPin className="w-3.5 h-3.5" />
+                Back to Map Overview
+              </button>
+            </>
+          )}
+        </div>
 
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
           <div>

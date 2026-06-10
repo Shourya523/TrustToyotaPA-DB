@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import DashboardLayout from "../../../components/dashboard/DashboardLayout";
 import { getUserConnections, runCustomQuery } from "../../../actions/db";
-import { textToSqlAction } from "../../../actions/rag";
+import { textToSqlAction, analyzeQueryResultsAction } from "../../../actions/rag";
 import {
   listSavedQueries,
   saveQuery,
@@ -40,6 +40,12 @@ import {
 import {
   BarChart,
   Bar,
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+  Legend,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -69,6 +75,8 @@ export default function TextToSqlStudioPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aiAnalysis, setAiAnalysis] = useState<any>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([]);
   const [historyFilter, setHistoryFilter] = useState<"all" | "favorites">("all");
@@ -134,12 +142,25 @@ export default function TextToSqlStudioPage() {
     setIsRunning(true);
     setError(null);
     setResults([]);
+    setAiAnalysis(null);
 
     const dbRes = await runCustomQuery(selectedConn, session?.user?.id, trimmedSql);
     if (dbRes.success) {
       const data = (dbRes.data as any[]) || [];
       setResults(data);
-      if (data.length === 0) setError("Query successful, but no rows were returned.");
+      if (data.length === 0) {
+        setError("Query successful, but no rows were returned.");
+      } else {
+        // Fetch AI Insights and Chart Config automatically
+        setIsAnalyzing(true);
+        const analysisQuery = naturalQuery || sqlText;
+        analyzeQueryResultsAction(analysisQuery, trimmedSql, data.slice(0, 5)).then(analysis => {
+          if (analysis.success && analysis.data) {
+            setAiAnalysis(analysis.data);
+          }
+          setIsAnalyzing(false);
+        });
+      }
     } else {
       setError(dbRes.error || "An error occurred.");
     }
@@ -222,21 +243,54 @@ export default function TextToSqlStudioPage() {
     });
   }, [savedQueries, historyFilter, tagFilter]);
 
-  const chartData = useMemo(() => {
-    if (results.length === 0) return null;
-    const keys = Object.keys(results[0]);
-    const labelKey = keys.find((k) => typeof results[0][k] === "string") || keys[0];
-    const valueKey = keys.find((k) => {
-      const val = results[0][k];
-      return typeof val === "number" || (!isNaN(Number(val)) && val !== null && val !== "");
-    });
-    if (!valueKey) return null;
-
-    return results.slice(0, 15).map((row, i) => ({
+  const renderDynamicChart = (type: string, labelKey: string, valueKey: string) => {
+    const data = results.slice(0, 15).map((row, i) => ({
       name: String(row[labelKey] ?? `Row ${i + 1}`).slice(0, 20),
       value: Number(row[valueKey]) || 0,
     }));
-  }, [results]);
+
+    const formatValue = (val: number) => {
+      if (val >= 1000000) return `${(val / 1000000).toFixed(1)}M`;
+      if (val >= 1000) return `${(val / 1000).toFixed(1)}k`;
+      return val.toLocaleString();
+    };
+
+    const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#ef4444', '#3b82f6'];
+
+    if (type === "pie") {
+      return (
+        <PieChart>
+          <Pie data={data} cx="50%" cy="50%" innerRadius={40} outerRadius={80} paddingAngle={2} dataKey="value" nameKey="name">
+            {data.map((entry, index) => (
+              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+            ))}
+          </Pie>
+          <Tooltip formatter={(value: number) => [formatValue(value), "Value"]} contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
+          <Legend wrapperStyle={{ fontSize: "10px" }} />
+        </PieChart>
+      );
+    } else if (type === "line") {
+      return (
+        <LineChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+          <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-35} textAnchor="end" height={50} />
+          <YAxis tick={{ fontSize: 10 }} tickFormatter={formatValue} width={45} />
+          <Tooltip formatter={(value: number) => [formatValue(value), "Value"]} contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
+          <Line type="monotone" dataKey="value" stroke="hsl(var(--primary))" strokeWidth={2} />
+        </LineChart>
+      );
+    } else {
+      return (
+        <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 20 }}>
+          <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+          <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-35} textAnchor="end" height={50} />
+          <YAxis tick={{ fontSize: 10 }} tickFormatter={formatValue} width={45} />
+          <Tooltip formatter={(value: number) => [formatValue(value), "Value"]} contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
+          <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+        </BarChart>
+      );
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -399,81 +453,93 @@ export default function TextToSqlStudioPage() {
               )}
             </Card>
 
-            {/* Results */}
-            <Card className="flex-1 flex flex-col overflow-hidden min-h-0">
-              <Tabs defaultValue="table" className="flex flex-col h-full">
-              <div className="px-4 py-2 border-b bg-muted/30 flex items-center justify-between shrink-0">
-                <TabsList className="h-8">
-                  <TabsTrigger value="table" className="text-xs gap-1">
-                    <Table2 className="w-3 h-3" /> Table
-                  </TabsTrigger>
-                  <TabsTrigger value="chart" className="text-xs gap-1" disabled={!chartData}>
-                    <BarChart3 className="w-3 h-3" /> Chart
-                  </TabsTrigger>
-                </TabsList>
-                {results.length > 0 && (
-                  <span className="text-[10px] text-muted-foreground">{results.length} rows</span>
-                )}
-              </div>
-
+            {/* Results Dashboard */}
+            <div className="flex-1 flex flex-col overflow-y-auto overflow-x-hidden min-h-0 pr-2 gap-4 pb-4">
               {error && (
-                <div className="px-4 py-2 text-xs text-destructive bg-destructive/10 border-b shrink-0">{error}</div>
+                <div className="p-3 text-xs text-destructive bg-destructive/10 border border-destructive/20 rounded-xl">{error}</div>
+              )}
+              
+              {!error && results.length === 0 && !isRunning && (
+                <Card className="flex-1 flex flex-col items-center justify-center text-muted-foreground opacity-50 p-8 text-center min-h-[300px]">
+                  <Table2 className="w-12 h-12 mb-3" />
+                  <p className="text-sm">Write a natural language query and click Send to generate insights</p>
+                </Card>
               )}
 
-              <TabsContent value="table" className="flex-1 overflow-auto m-0 p-0 min-h-0">
-                {results.length > 0 ? (
-                  <table className="w-full text-left border-collapse min-w-max">
-                    <thead className="sticky top-0 bg-muted/90 backdrop-blur-md">
-                      <tr>
-                        {Object.keys(results[0]).map((key) => (
-                          <th key={key} className="p-3 text-[10px] font-bold uppercase border-b text-muted-foreground">{key}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {results.map((row, i) => (
-                        <tr key={i} className="hover:bg-primary/5 border-b border-border/5">
-                          {Object.values(row).map((val: any, j) => (
-                            <td key={j} className="p-3 text-[11px] font-mono">{val?.toString() ?? "null"}</td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div className="h-full flex flex-col items-center justify-center text-muted-foreground opacity-40 p-8 text-center">
-                    <Table2 className="w-12 h-12 mb-3" />
-                    <p className="text-sm">Generate or load a query, then run it</p>
-                  </div>
-                )}
-              </TabsContent>
+              {results.length > 0 && (
+                <>
+                  {/* AI Insights & Charts Wrapper */}
+                  {isAnalyzing ? (
+                    <Card className="p-6 flex flex-col items-center justify-center min-h-[200px] border-primary/20">
+                      <Loader2 className="w-8 h-8 animate-spin text-primary mb-3" />
+                      <p className="text-xs text-muted-foreground animate-pulse">Gemini is analyzing the data to build visualizations...</p>
+                    </Card>
+                  ) : aiAnalysis && aiAnalysis.labelKey && aiAnalysis.valueKey ? (
+                    <>
+                      {/* Insight Panel */}
+                      <Card className="p-4 bg-primary/5 border-primary/20">
+                        <h3 className="text-sm font-bold flex items-center gap-2 mb-2"><Sparkles className="w-4 h-4 text-primary" /> AI Data Insights</h3>
+                        <p className="text-xs text-muted-foreground leading-relaxed font-medium">{aiAnalysis.insight}</p>
+                      </Card>
 
-              <TabsContent value="chart" className="flex-1 m-0 p-4 min-h-0">
-                {chartData ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 40 }}>
-                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                      <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-35} textAnchor="end" height={60} />
-                      <YAxis tick={{ fontSize: 10 }} />
-                      <Tooltip
-                        contentStyle={{
-                          background: "hsl(var(--card))",
-                          border: "1px solid hsl(var(--border))",
-                          borderRadius: "8px",
-                          fontSize: "12px",
-                        }}
-                      />
-                      <Bar dataKey="value" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-                    Run a query with numeric results to see a chart
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
-          </Card>
+                      {/* Charts Grid */}
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <Card className="p-4 h-72 flex flex-col border-border/50">
+                          <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">
+                            {aiAnalysis.recommendedChart === 'pie' ? 'Distribution' : 'Comparison'}
+                          </h4>
+                          <div className="flex-1 min-h-0">
+                            <ResponsiveContainer width="100%" height="100%">
+                              {renderDynamicChart(aiAnalysis.recommendedChart, aiAnalysis.labelKey, aiAnalysis.valueKey)}
+                            </ResponsiveContainer>
+                          </div>
+                        </Card>
+                        <Card className="p-4 h-72 flex flex-col border-border/50">
+                          <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">
+                            {aiAnalysis.recommendedChart === 'pie' ? 'Bar Chart' : 'Pie Chart'}
+                          </h4>
+                          <div className="flex-1 min-h-0">
+                            <ResponsiveContainer width="100%" height="100%">
+                              {renderDynamicChart(aiAnalysis.recommendedChart === 'pie' ? 'bar' : 'pie', aiAnalysis.labelKey, aiAnalysis.valueKey)}
+                            </ResponsiveContainer>
+                          </div>
+                        </Card>
+                      </div>
+                    </>
+                  ) : null}
+
+                  {/* Raw Table */}
+                  <Card className="flex flex-col flex-1 overflow-hidden min-h-[300px]">
+                    <div className="px-4 py-3 border-b bg-muted/30 flex items-center justify-between shrink-0">
+                      <h4 className="text-xs font-bold text-muted-foreground uppercase flex items-center gap-2">
+                        <Table2 className="w-3.5 h-3.5" /> Raw Data
+                      </h4>
+                      <span className="text-[10px] bg-muted px-2 py-0.5 rounded border text-muted-foreground">{results.length} rows</span>
+                    </div>
+                    <div className="flex-1 overflow-auto m-0 p-0">
+                      <table className="w-full text-left border-collapse min-w-max">
+                        <thead className="sticky top-0 bg-muted/90 backdrop-blur-md z-10 shadow-sm">
+                          <tr>
+                            {Object.keys(results[0]).map((key) => (
+                              <th key={key} className="p-3 text-[10px] font-bold uppercase border-b text-muted-foreground">{key}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {results.map((row, i) => (
+                            <tr key={i} className="hover:bg-primary/5 border-b border-border/5">
+                              {Object.values(row).map((val: any, j) => (
+                                <td key={j} className="p-3 text-[11px] font-mono text-foreground/80">{val?.toString() ?? "null"}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </Card>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>

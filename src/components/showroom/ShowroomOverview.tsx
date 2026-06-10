@@ -190,7 +190,7 @@ export default function ShowroomOverview() {
             className="rounded-2xl border border-border bg-card/20 p-5 sm:p-8"
           >
             {branchStats ? (
-              <ShowroomDetailPanel stats={branchStats} onBack={handleBackToCity} />
+              <ShowroomDetailPanel stats={branchStats} onBack={handleBackToCity} onBackToOverview={handleBackToMap} />
             ) : (
               <div className="flex items-center justify-center py-24">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />

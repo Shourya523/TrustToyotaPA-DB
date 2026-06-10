@@ -511,3 +511,28 @@ Strict Rules:
         return { success: false, error: error.message };
     }
 }
+
+export async function analyzeQueryResultsAction(userQuestion: string, sql: string, dataSample: any[]) {
+    try {
+        const model = genAI.getGenerativeModel({
+            model: "gemini-3.1-flash-lite",
+            systemInstruction: `You are a data analyst. Given a user question, the SQL query used, and a small sample of the JSON results, provide a brief business insight (1-3 sentences) and recommend the best visualization type.
+Respond in strict JSON format:
+{
+  "insight": "string",
+  "recommendedChart": "bar" | "pie" | "line",
+  "labelKey": "string (the column name to use for X-axis or Pie slices)",
+  "valueKey": "string (the column name to use for Y-axis or Pie values)"
+}`
+        });
+
+        const prompt = `USER QUESTION: ${userQuestion}\nSQL: ${sql}\nDATA SAMPLE (first 5 rows): ${JSON.stringify(dataSample.slice(0, 5))}`;
+        const result = await model.generateContent(prompt);
+        let textResult = result.response.text();
+        textResult = textResult.replace(/^```json\n/, "").replace(/^```\n/, "").replace(/\n```$/, "");
+        return { success: true, data: JSON.parse(textResult) };
+    } catch (e: any) {
+        console.error("AI Analysis Error:", e);
+        return { success: false, error: e.message };
+    }
+}
