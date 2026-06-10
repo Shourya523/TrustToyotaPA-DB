@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "datalens": {
+      "command": "node",
+      "args": [
+        "C:/Users/You/datalens-hackDays/vscode-extension/mcp-server/dist/index.js"
+      ],
+      "cwd": "C:/Users/You/datalens-hackDays",
+      "disabled": false,
+      "env": {
+        "DOTENV_CONFIG_QUIET": "true",
+        "DATALENS_DATABASE_URL": "postgresql://user:password@host/db?sslmode=require",
+        "GEMINI_API_KEY_MCP": "your-gemini-mcp-key",
+        "GROQ_API_KEY_MCP": "your-groq-mcp-key"
+      }
+    }
+  }
+}

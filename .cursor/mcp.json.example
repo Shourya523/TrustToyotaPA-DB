@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "datalens": {
+      "command": "node",
+      "args": ["${workspaceFolder}/vscode-extension/mcp-server/dist/index.js"],
+      "env": {
+        "DOTENV_CONFIG_QUIET": "true"
+      }
+    }
+  }
+}
