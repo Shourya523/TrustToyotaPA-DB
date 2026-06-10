@@ -288,10 +288,4 @@ MIT License
 
 # ⚡ DataLens AI
 
-Understand your database in seconds — not weeks.#   T r u s t T o y o t a P A - D B  
- #   T r u s t T o y o t a P A - D B  
- #   T r u s t T o y o t a P A - D B  
- #   T r u s t T o y o t a P A - D B  
- #   T r u s t T o y o t a P A - D B  
- #   T r u s t T o y o t a P A - D B  
- 
+Understand your database in seconds — not weeks.
