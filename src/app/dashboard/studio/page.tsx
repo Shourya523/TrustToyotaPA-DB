@@ -260,7 +260,7 @@ export default function TextToSqlStudioPage() {
     if (type === "pie") {
       return (
         <PieChart>
-          <Pie data={data} cx="50%" cy="50%" innerRadius={40} outerRadius={80} paddingAngle={2} dataKey="value" nameKey="name">
+          <Pie data={data} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={2} dataKey="value" nameKey="name">
             {data.map((entry, index) => (
               <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
             ))}
@@ -484,7 +484,7 @@ export default function TextToSqlStudioPage() {
 
                       {/* Charts Grid */}
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <Card className="p-4 h-72 flex flex-col border-border/50">
+                        <Card className="p-4 h-[360px] flex flex-col border-border/50">
                           <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">
                             {aiAnalysis.recommendedChart === 'pie' ? 'Distribution' : 'Comparison'}
                           </h4>
@@ -494,7 +494,7 @@ export default function TextToSqlStudioPage() {
                             </ResponsiveContainer>
                           </div>
                         </Card>
-                        <Card className="p-4 h-72 flex flex-col border-border/50">
+                        <Card className="p-4 h-[360px] flex flex-col border-border/50">
                           <h4 className="text-xs font-bold text-muted-foreground uppercase mb-2">
                             {aiAnalysis.recommendedChart === 'pie' ? 'Bar Chart' : 'Pie Chart'}
                           </h4>

@@ -1,42 +1,98 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import DashboardLayout from "../../../components/dashboard/DashboardLayout";
-import { getUserConnections, runCustomQuery, analyzeImpactAction } from "../../../actions/db";
+import { getUserConnections, runCustomQuery } from "../../../actions/db";
 import { DEFAULT_CONNECTION_ID } from "@/src/lib/database-uri";
-import { getDataQualityMetrics, getStructuralAnalysis } from "../../../actions/dataQuality";
-import { Progress } from "../../../components/ui/progress";
+import { textToSqlAction, analyzeQueryResultsAction } from "../../../actions/rag";
 import { authClient } from "@/src/components/landing/auth";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
-import { Loader2, Play, FileJson, Database, ShieldAlert, Zap, Network, BarChart3, AlertTriangle, CheckCircle2, History, Code2, ScrollText } from "lucide-react";
+import {
+  Loader2,
+  Send,
+  Car,
+  Users,
+  TrendingUp,
+  MapPin,
+  Sparkles,
+  Database,
+  Code,
+  Table,
+  HelpCircle,
+  ArrowRight,
+  MessageSquare,
+} from "lucide-react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  AreaChart,
+  Area,
+} from "recharts";
+import { formatCurrency } from "@/src/lib/showroom-types";
+
+type Message = {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  sql?: string;
+  data?: any[];
+  chartConfig?: {
+    insight: string;
+    recommendedChart: "bar" | "pie" | "line";
+    labelKey: string;
+    valueKey: string;
+  };
+  error?: string;
+  loading?: boolean;
+};
 
 const DEMO_ID = DEFAULT_CONNECTION_ID;
+const CHART_COLORS = ["hsl(0 72% 51%)", "hsl(25 95% 53%)", "hsl(45 93% 47%)", "hsl(145 63% 42%)", "hsl(200 75% 45%)"];
 
-export default function QueryPage() {
+const QUICK_PROMPTS = [
+  { label: "Mostly Sold Cars", text: "Which car models are mostly sold?", icon: Car },
+  { label: "Top Sales Reps", text: "Who sold the most cars and what is their total revenue?", icon: Users },
+  { label: "Showroom Branches", text: "List all active showrooms and their locations.", icon: MapPin },
+  { label: "Revenue Trend", text: "Show our monthly revenue trend.", icon: TrendingUp },
+];
+
+export default function ShowroomAssistantPage() {
   const { data: session } = authClient.useSession();
   const [connections, setConnections] = useState<any[]>([]);
   const [selectedConn, setSelectedConn] = useState(DEMO_ID);
-  const [sqlText, setSqlText] = useState(`SELECT 
-    b.city,
-    b.street,
-    COUNT(c.contract_id) AS cars_sold
-FROM branch b
-LEFT JOIN contract c ON c.branch_id = b.branch_id
-GROUP BY b.branch_id, b.city, b.street
-ORDER BY cars_sold DESC;`);
-  const [results, setResults] = useState<any[]>([]);
-  const [isRunning, setIsRunning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [impactAnalysis, setImpactAnalysis] = useState<{ depth: number; impact: string; relations: string[] } | null>(null);
-  const [activeTab, setActiveTab] = useState<"graph" | "quality" | "execution">("graph");
-  const [qualityResults, setQualityResults] = useState<any>(null);
-  const [isAnalyzingQuality, setIsAnalyzingQuality] = useState(false);
-  const [riskLevel, setRiskLevel] = useState<"LOW" | "MEDIUM" | "HIGH">("LOW");
-  const [structuralInsights, setStructuralInsights] = useState<any>(null);
+  const [input, setInput] = useState("");
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: "welcome",
+      role: "assistant",
+      content: `Hello! I am your **Trust Toyota Showroom AI Assistant**. 
 
+You can ask me questions about your showroom network, employee performance, or vehicle sales in plain English, and I will translate it to queries and provide visual insights.
 
+*Example questions you can ask:*
+- *Which cars were mostly sold?*
+- *Who sold the most cars and what is their total commission?*
+- *Show me our monthly revenue trend.*
+- *List all showrooms.*
 
+Alternatively, feel free to enter direct PostgreSQL \`SELECT\` queries!`,
+    },
+  ]);
+  const [isPending, setIsPending] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Fetch connections on load
   useEffect(() => {
     const fetchConns = async () => {
       let userConns: any[] = [];
@@ -49,389 +105,493 @@ ORDER BY cars_sold DESC;`);
     fetchConns();
   }, [session]);
 
-  const analyzeImpactWithGroq = async (query: string) => {
-    const res = await analyzeImpactAction(query);
-    if (res.success) {
-      return res.data;
-    } else {
-      console.error("Groq Analysis Failed", res.error);
-      return null;
-    }
-  };
+  // Scroll to bottom of message thread
+  useEffect(() => {
+    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
-  const execute = async () => {
-    const trimmedSql = sqlText.trim();
-    if (!trimmedSql) return;
+  const handleSendMessage = async (textToSend: string) => {
+    const queryText = textToSend.trim();
+    if (!queryText) return;
 
-    const readOnlyRegex = /^\s*(SELECT|WITH|SHOW|DESCRIBE|EXPLAIN)\b/i;
-    if (!readOnlyRegex.test(trimmedSql)) {
-      setError("Security Policy: Only read-only queries are permitted.");
-      return;
-    }
+    // 1. Add User Message
+    const userMsgId = crypto.randomUUID();
+    const userMsg: Message = { id: userMsgId, role: "user", content: queryText };
+    setMessages((prev) => [...prev, userMsg]);
+    setInput("");
+    setIsPending(true);
 
-    setIsRunning(true);
-    setError(null);
-    setResults([]);
-    setImpactAnalysis(null);
+    // 2. Add Assistant Loading Placeholder
+    const assistantMsgId = crypto.randomUUID();
+    setMessages((prev) => [...prev, { id: assistantMsgId, role: "assistant", content: "", loading: true }]);
 
     try {
-      // Cascade Risk Amplifier
-      const isDropQuery = trimmedSql.toUpperCase().includes("DROP TABLE");
-      let currentRisk: "LOW" | "MEDIUM" | "HIGH" = isDropQuery ? "MEDIUM" : "LOW";
+      let sqlToExecute = "";
+      let explanation = "";
 
-      const [dbRes, analysis] = await Promise.all([
-        runCustomQuery(selectedConn, session?.user?.id, trimmedSql),
-        analyzeImpactAction(trimmedSql)
-      ]);
+      const readOnlyRegex = /^\s*(SELECT|WITH|SHOW|DESCRIBE|EXPLAIN)\b/i;
+      const isDirectSql = readOnlyRegex.test(queryText);
 
-      setImpactAnalysis(analysis.success ? analysis.data : null);
-
-      if (isDropQuery) {
-        // Run quality check to amplify risk
-        const tableNameMatch = trimmedSql.match(/DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(\w+)/i);
-        if (tableNameMatch?.[1]) {
-          const qual = await getDataQualityMetrics(tableNameMatch[1], selectedConn, session?.user?.id!);
-          if (qual.success && qual.data.health.score < 70) {
-            currentRisk = "HIGH";
-            setError(`CASCADE RISK AMPLIFIED: Table ${tableNameMatch[1]} has low health score (${qual.data.health.score}). Proceed with extreme caution.`);
-          }
-        }
-      }
-      setRiskLevel(currentRisk);
-
-      if (dbRes.success) {
-        const data = (dbRes.data as any[]) || [];
-        setResults(data);
-        if (data.length === 0) setError("Query successful, but no rows were returned.");
-
-        // Auto-run quality analysis for the first table detected in the query (simple heuristic)
-        const tableMatch = trimmedSql.match(/FROM\s+(\w+)/i);
-        if (tableMatch?.[1]) {
-          fetchQualityMetrics(tableMatch[1]);
-        }
+      if (isDirectSql) {
+        sqlToExecute = queryText;
+        explanation = "Running your custom SQL query directly...";
       } else {
-        setError(dbRes.error || "An error occurred.");
+        // Translate Natural Language to SQL
+        const translationRes = await textToSqlAction(queryText, selectedConn);
+        if (translationRes.success && translationRes.data) {
+          sqlToExecute = translationRes.data.sql;
+          explanation = translationRes.data.explanation;
+        } else {
+          throw new Error(translationRes.error || "Failed to translate natural language question to SQL query.");
+        }
       }
+
+      // Execute SQL Query
+      const queryRes = await runCustomQuery(selectedConn, session?.user?.id, sqlToExecute);
+      if (!queryRes.success) {
+        throw new Error(queryRes.error || "SQL execution failed.");
+      }
+
+      const rawRows = (queryRes.data as any[]) || [];
+      if (rawRows.length === 0) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMsgId
+              ? {
+                  ...msg,
+                  content: `${explanation}\n\nQuery completed successfully, but returned 0 rows.`,
+                  sql: sqlToExecute,
+                  data: [],
+                  loading: false,
+                }
+              : msg
+          )
+        );
+        setIsPending(false);
+        return;
+      }
+
+      // Run AI Insights & Chart Recommendations on the data
+      let chartConfig: Message["chartConfig"] = undefined;
+      const analysisRes = await analyzeQueryResultsAction(queryText, sqlToExecute, rawRows);
+      if (analysisRes.success && analysisRes.data) {
+        chartConfig = {
+          insight: analysisRes.data.insight,
+          recommendedChart: analysisRes.data.recommendedChart as any,
+          labelKey: analysisRes.data.labelKey,
+          valueKey: analysisRes.data.valueKey,
+        };
+      }
+
+      // Update Assistant Message
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMsgId
+            ? {
+                ...msg,
+                content: chartConfig?.insight || explanation,
+                sql: sqlToExecute,
+                data: rawRows,
+                chartConfig,
+                loading: false,
+              }
+            : msg
+        )
+      );
     } catch (err: any) {
-      setError(err.message || "Execution failed.");
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMsgId
+            ? {
+                ...msg,
+                content: "I encountered an error trying to process that request.",
+                error: err.message || "An unexpected error occurred.",
+                loading: false,
+              }
+            : msg
+        )
+      );
     } finally {
-      setIsRunning(false);
+      setIsPending(false);
     }
   };
 
-  const fetchQualityMetrics = async (tableName: string) => {
-    setIsAnalyzingQuality(true);
-    const res = await getDataQualityMetrics(tableName, selectedConn, session?.user?.id!);
-    if (res.success) {
-      setQualityResults(res.data);
+  // Automatically execute voice queries redirected from the floating microphone button
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const voiceQuery = params.get("voice_query");
+      if (voiceQuery) {
+        // Clear search parameters without page refresh
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, "", cleanUrl);
+        // Trigger SQL generation and execution
+        handleSendMessage(voiceQuery);
+      }
     }
-    setIsAnalyzingQuality(false);
-    fetchStructuralInsights();
-  };
+  }, []);
 
-  const fetchStructuralInsights = async () => {
-    const res = await getStructuralAnalysis(selectedConn);
-    if (res.success) {
-      setStructuralInsights(res.data);
-    }
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleSendMessage(input);
   };
 
   return (
     <DashboardLayout>
       <div className="flex flex-col h-[calc(100vh-8rem)] gap-4 overflow-hidden">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        {/* Header Block */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border/50 pb-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">SQL Lab <span className="text-xs bg-primary/10 text-primary px-2 py-1 rounded-full ml-2">AI Enhanced</span></h1>
-            <p className="text-sm text-muted-foreground">Run queries with automated graph impact analysis.</p>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight flex items-center gap-2">
+              <MessageSquare className="w-5 h-5 text-red-500" />
+              Showroom AI Assistant
+            </h1>
+            <p className="text-xs sm:text-sm text-muted-foreground mt-0.5">
+              Interact with the showroom database using conversational AI and dynamic charts.
+            </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 self-start sm:self-center bg-secondary/30 border p-1 rounded-xl">
+            <Database className="w-3.5 h-3.5 text-muted-foreground ml-2 shrink-0" />
             <select
-              className="h-10 w-64 rounded-md border border-input bg-background px-3 text-sm outline-none"
+              className="h-8 w-48 rounded-lg bg-transparent text-xs outline-none pr-2 cursor-pointer font-medium"
               value={selectedConn}
               onChange={(e) => setSelectedConn(e.target.value)}
             >
-              {connections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {connections.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
             </select>
-
-            <Button onClick={execute} disabled={isRunning} className="min-w-[120px]">
-              {isRunning ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Zap className="w-4 h-4 mr-2" />}
-              Analyze & Run
-            </Button>
           </div>
         </div>
 
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-4 min-h-0 overflow-hidden">
-          <div className="lg:col-span-2 flex flex-col gap-4 overflow-hidden">
-            <Card className="flex-1 relative border-2 border-primary/10 overflow-hidden bg-[#0a0a0a]">
-              <textarea
-                value={sqlText}
-                onChange={(e) => setSqlText(e.target.value)}
-                className="w-full h-full p-6 bg-transparent text-emerald-400 font-mono text-sm outline-none resize-none"
-                spellCheck={false}
-              />
-            </Card>
-
-            <Card className="h-2/5 overflow-hidden flex flex-col border-muted">
-              <div className="px-4 py-2 border-b bg-muted/30 flex justify-between items-center">
-                <span className="text-[10px] font-bold text-muted-foreground flex items-center gap-2 uppercase">
-                  <FileJson className="w-3 h-3 text-primary" /> Result Set {results.length > 0 && `(${results.length})`}
-                </span>
-              </div>
-              <div className="flex-1 overflow-auto">
-                {results.length > 0 ? (
-                  <table className="w-full text-left border-collapse min-w-max">
-                    <thead className="sticky top-0 bg-muted/90 backdrop-blur-md">
-                      <tr>
-                        {Object.keys(results[0]).map((key) => (
-                          <th key={key} className="p-3 text-[10px] font-bold uppercase border-b text-muted-foreground">{key}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {results.map((row, i) => (
-                        <tr key={i} className="hover:bg-primary/5 border-b border-border/5">
-                          {Object.values(row).map((val: any, j) => (
-                            <td key={j} className="p-3 text-[11px] font-mono">{val?.toString() || "null"}</td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div className="h-full flex items-center justify-center opacity-20"><Database className="w-12 h-12" /></div>
+        {/* Message Log Thread */}
+        <div className="flex-1 overflow-y-auto px-1 space-y-4">
+          {messages.map((msg) => (
+            <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div
+                className={`max-w-3xl rounded-2xl p-4 sm:p-5 shadow-sm border transition-all duration-300 ${
+                  msg.role === "user"
+                    ? "bg-red-500/10 border-red-500/20 text-foreground ml-12 rounded-tr-sm"
+                    : "bg-card/35 backdrop-blur-md border-border/80 mr-12 rounded-tl-sm"
+                }`}
+              >
+                {/* Assistant Icon */}
+                {msg.role === "assistant" && (
+                  <div className="flex items-center gap-2 mb-3 text-red-500 text-xs font-bold uppercase tracking-wider">
+                    <Sparkles className="w-3.5 h-3.5 text-red-500 animate-pulse" />
+                    Toyota AI Advisor
+                  </div>
                 )}
-              </div>
-            </Card>
-          </div>
 
-          <div className="flex flex-col gap-4 overflow-hidden">
-            <Card className="flex-1 border-primary/20 bg-primary/5 flex flex-col overflow-hidden">
-              <div className="flex border-b border-primary/10">
-                <button
-                  onClick={() => setActiveTab("graph")}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-[10px] font-bold uppercase tracking-wider transition-colors ${activeTab === "graph" ? "bg-primary/10 text-primary border-b-2 border-primary" : "text-muted-foreground hover:bg-primary/5"}`}
-                >
-                  <Network className="w-3 h-3" /> Impact Analysis
-                </button>
-                <button
-                  onClick={() => setActiveTab("quality")}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-[10px] font-bold uppercase tracking-wider transition-colors ${activeTab === "quality" ? "bg-primary/10 text-primary border-b-2 border-primary" : "text-muted-foreground hover:bg-primary/5"}`}
-                >
-                  <BarChart3 className="w-3 h-3" /> Data Quality
-                </button>
-                <button
-                  onClick={() => setActiveTab("execution")}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-[10px] font-bold uppercase tracking-wider transition-colors ${activeTab === "execution" ? "bg-primary/10 text-primary border-b-2 border-primary" : "text-muted-foreground hover:bg-primary/5"}`}
-                >
-                  <ScrollText className="w-3 h-3" /> Execution
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-auto p-4">
-                {activeTab === "graph" ? (
+                {/* Loading State */}
+                {msg.loading ? (
+                  <div className="flex items-center gap-3 py-2 text-xs text-muted-foreground font-medium">
+                    <Loader2 className="w-4 h-4 animate-spin text-red-500" />
+                    Querying ledger & analyzing data...
+                  </div>
+                ) : (
                   <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-primary font-bold text-[10px] uppercase tracking-widest mb-2">
-                      <Network className="w-4 h-4" /> Graph Relationship Depth
+                    {/* Content text */}
+                    <div className="text-sm leading-relaxed whitespace-pre-wrap font-sans text-foreground/90">
+                      {msg.content}
                     </div>
-                    {impactAnalysis ? (
-                      <div className="space-y-4 animate-in slide-in-from-right-4">
-                        <div className="flex items-center justify-between p-3 bg-background rounded-lg border">
-                          <span className="text-xs text-muted-foreground">Graph Depth</span>
-                          <span className="text-xl font-bold text-primary">{impactAnalysis.depth}</span>
-                        </div>
 
-                        <div className="space-y-2">
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase">Schema Relations</p>
-                          <div className="flex flex-wrap gap-2">
-                            {impactAnalysis.relations.map((rel: string, i: number) => (
-                              <span key={i} className="px-2 py-1 bg-background border rounded text-[10px] font-mono">{rel}</span>
-                            ))}
-                          </div>
+                    {/* Error display */}
+                    {msg.error && (
+                      <div className="flex items-start gap-2.5 p-3 rounded-xl border border-red-500/20 bg-red-500/5 text-xs text-red-500">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                        <div className="space-y-1">
+                          <p className="font-semibold">Query Failure</p>
+                          <p className="font-mono text-[10px] break-all leading-normal">{msg.error}</p>
                         </div>
-
-                        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-                          <div className="flex items-center gap-2 mb-1">
-                            <ShieldAlert className={`w-3 h-3 ${riskLevel === "HIGH" ? "text-destructive" : "text-amber-500"}`} />
-                            <p className={`text-[10px] font-bold uppercase ${riskLevel === "HIGH" ? "text-destructive" : "text-amber-500"}`}>
-                              Impact Summary {riskLevel !== "LOW" && `(${riskLevel} RISK)`}
-                            </p>
-                          </div>
-                          <p className="text-xs leading-relaxed">{impactAnalysis.impact}</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="h-48 flex flex-col items-center justify-center text-center opacity-40">
-                        <Network className="w-8 h-8 mb-2" />
-                        <p className="text-[10px] uppercase">Execute query to see<br />graph relationship depth</p>
                       </div>
                     )}
-                  </div>
-                ) : activeTab === "quality" ? (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-primary font-bold text-[10px] uppercase tracking-widest mb-2">
-                      <BarChart3 className="w-4 h-4" /> Table Health Score
-                    </div>
 
-                    {isAnalyzingQuality ? (
-                      <div className="h-48 flex flex-col items-center justify-center gap-3">
-                        <Loader2 className="w-6 h-6 animate-spin text-primary" />
-                        <p className="text-[10px] uppercase animate-pulse">Running Deterministic Checks...</p>
+                    {/* Chart Visualization */}
+                    {msg.chartConfig && msg.data && msg.data.length > 0 && (
+                      <div className="mt-4 p-4 border border-border/60 bg-background/50 rounded-xl">
+                        <div className="h-[320px] w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            {msg.chartConfig.recommendedChart === "bar" ? (
+                              <BarChart data={msg.data} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                                <XAxis
+                                  dataKey={msg.chartConfig.labelKey}
+                                  tick={{ fontSize: 9 }}
+                                  className="fill-muted-foreground"
+                                />
+                                <YAxis tick={{ fontSize: 9 }} className="fill-muted-foreground" />
+                                <Tooltip
+                                  contentStyle={{
+                                    fontSize: 10,
+                                    background: "hsl(var(--card))",
+                                    border: "1px solid hsl(var(--border))",
+                                    borderRadius: 6,
+                                  }}
+                                />
+                                <Bar
+                                  dataKey={msg.chartConfig.valueKey}
+                                  fill="hsl(var(--primary))"
+                                  radius={[4, 4, 0, 0]}
+                                >
+                                  {msg.data.map((_, i) => (
+                                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                                  ))}
+                                </Bar>
+                              </BarChart>
+                            ) : msg.chartConfig.recommendedChart === "line" ? (
+                              <LineChart data={msg.data} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+                                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                                <XAxis
+                                  dataKey={msg.chartConfig.labelKey}
+                                  tick={{ fontSize: 9 }}
+                                  className="fill-muted-foreground"
+                                />
+                                <YAxis tick={{ fontSize: 9 }} className="fill-muted-foreground" />
+                                <Tooltip
+                                  contentStyle={{
+                                    fontSize: 10,
+                                    background: "hsl(var(--card))",
+                                    border: "1px solid hsl(var(--border))",
+                                    borderRadius: 6,
+                                  }}
+                                />
+                                <Line
+                                  type="monotone"
+                                  dataKey={msg.chartConfig.valueKey}
+                                  stroke="hsl(var(--primary))"
+                                  strokeWidth={2}
+                                  dot={{ r: 3 }}
+                                />
+                              </LineChart>
+                            ) : (
+                              <PieChart>
+                                <Pie
+                                  data={msg.data}
+                                  dataKey={msg.chartConfig.valueKey}
+                                  nameKey={msg.chartConfig.labelKey}
+                                  cx="50%"
+                                  cy="50%"
+                                  outerRadius={95}
+                                  innerRadius={60}
+                                  paddingAngle={3}
+                                >
+                                  {msg.data.map((_, i) => (
+                                    <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                                  ))}
+                                </Pie>
+                                <Tooltip
+                                  contentStyle={{
+                                    fontSize: 10,
+                                    background: "hsl(var(--card))",
+                                    border: "1px solid hsl(var(--border))",
+                                    borderRadius: 6,
+                                  }}
+                                />
+                              </PieChart>
+                            )}
+                          </ResponsiveContainer>
+                        </div>
+                        <p className="text-[10px] text-center text-muted-foreground font-medium mt-2">
+                          Visualizing {msg.chartConfig.valueKey} grouped by {msg.chartConfig.labelKey}
+                        </p>
                       </div>
-                    ) : qualityResults ? (
-                      <div className="space-y-4 animate-in slide-in-from-right-4">
-                        <div className="p-4 bg-background rounded-lg border space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[10px] font-bold uppercase text-muted-foreground">Health Status</span>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${qualityResults.health.status === "GOOD" ? "bg-emerald-500/10 text-emerald-500" :
-                              qualityResults.health.status === "WARNING" ? "bg-amber-500/10 text-amber-500" :
-                                "bg-destructive/10 text-destructive"
-                              }`}>
-                              {qualityResults.health.status}
-                            </span>
-                          </div>
-                          <div className="space-y-1">
-                            <div className="flex justify-between text-xl font-bold">
-                              <span>{qualityResults.health.score}</span>
-                              <span className="text-muted-foreground/30">/ 100</span>
-                            </div>
-                            <Progress value={qualityResults.health.score} className={`h-1.5 ${qualityResults.health.score > 80 ? "[&>div]:bg-emerald-500" :
-                              qualityResults.health.score > 50 ? "[&>div]:bg-amber-500" :
-                                "[&>div]:bg-destructive"
-                              }`} />
-                          </div>
-                        </div>
+                    )}
 
-                        <div className="grid grid-cols-2 gap-2">
-                          <div className="p-3 bg-background border rounded-lg">
-                            <p className="text-[9px] font-bold text-muted-foreground uppercase mb-1">Orphans</p>
-                            <div className="flex items-center gap-2">
-                              <span className={`text-lg font-bold ${qualityResults.orphans.some((o: any) => o.orphan_count > 0) ? "text-destructive" : "text-primary"}`}>
-                                {qualityResults.orphans.reduce((acc: number, o: any) => acc + o.orphan_count, 0)}
-                              </span>
-                              {qualityResults.orphans.some((o: any) => o.orphan_count > 0) && <AlertTriangle className="w-3 h-3 text-destructive" />}
-                            </div>
-                          </div>
-                          <div className="p-3 bg-background border rounded-lg">
-                            <p className="text-[9px] font-bold text-muted-foreground uppercase mb-1">Duplicates</p>
-                            <div className="flex items-center gap-2">
-                              <span className={`text-lg font-bold ${qualityResults.duplicates.some((d: any) => d.count > 0) ? "text-destructive" : "text-primary"}`}>
-                                {qualityResults.duplicates.reduce((acc: number, d: any) => acc + d.count, 0)}
-                              </span>
-                              {qualityResults.duplicates.some((d: any) => d.count > 0) && <AlertTriangle className="w-3 h-3 text-destructive" />}
-                            </div>
-                          </div>
-                          <div className="p-3 bg-background border rounded-lg">
-                            <p className="text-[9px] font-bold text-muted-foreground uppercase mb-1">Null Violations</p>
-                            <span className={`text-lg font-bold ${qualityResults.nullViolations.length > 0 ? "text-amber-500" : "text-primary"}`}>
-                              {qualityResults.nullViolations.length}
-                            </span>
-                          </div>
-                          <div className="p-3 bg-background border rounded-lg">
-                            <p className="text-[9px] font-bold text-muted-foreground uppercase mb-1">Freshness</p>
-                            <div className="flex items-center gap-1">
-                              <span className="text-lg font-bold">{qualityResults.freshness?.freshness_days ?? "?"}</span>
-                              <span className="text-[9px] text-muted-foreground uppercase">Days</span>
-                            </div>
-                          </div>
-                        </div>
+                    {/* SQL details */}
+                    {msg.sql && (
+                      <details className="text-xs border border-border/60 bg-background/30 rounded-xl p-3 shadow-inner">
+                        <summary className="font-semibold cursor-pointer text-muted-foreground hover:text-foreground flex items-center gap-1.5 outline-none select-none">
+                          <Code className="w-3.5 h-3.5" />
+                          Show Generated SQL
+                        </summary>
+                        <pre className="mt-3 text-[10px] font-mono text-emerald-400 bg-background/80 p-3 rounded-lg overflow-x-auto border border-border/40 whitespace-pre-wrap leading-relaxed select-text">
+                          {msg.sql}
+                        </pre>
+                      </details>
+                    )}
 
-                        {qualityResults.nullViolations.length > 0 && (
-                          <div className="p-3 bg-amber-500/5 border border-amber-500/20 rounded-lg">
-                            <p className="text-[9px] font-bold text-amber-500 uppercase mb-2">Null Ratio Alerts</p>
-                            <div className="space-y-1">
-                              {qualityResults.nullViolations.map((v: any, i: number) => (
-                                <div key={i} className="flex justify-between text-[10px]">
-                                  <span className="font-mono">{v.column}</span>
-                                  <span className="font-bold">{(v.ratio * 100).toFixed(1)}%</span>
-                                </div>
+                    {/* Data table details */}
+                    {msg.data && msg.data.length > 0 && (
+                      <details className="text-xs border border-border/60 bg-background/30 rounded-xl p-3 shadow-inner">
+                        <summary className="font-semibold cursor-pointer text-muted-foreground hover:text-foreground flex items-center gap-1.5 outline-none select-none">
+                          <Table className="w-3.5 h-3.5" />
+                          View Result Table ({msg.data.length} rows)
+                        </summary>
+                        <div className="mt-3 overflow-x-auto rounded-lg border border-border/50 max-h-64 overflow-y-auto">
+                          <table className="w-full text-left border-collapse min-w-[320px]">
+                            <thead className="bg-muted/80 backdrop-blur text-[8px] uppercase tracking-widest font-bold sticky top-0 border-b">
+                              <tr>
+                                {Object.keys(msg.data[0] || {}).map((k) => (
+                                  <th key={k} className="p-2.5">
+                                    {k}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody className="text-[10px] font-mono text-foreground/80">
+                              {msg.data.slice(0, 15).map((row, i) => (
+                                <tr key={i} className="hover:bg-accent/40 border-b last:border-0 border-border/40">
+                                  {Object.values(row).map((val: any, j) => (
+                                    <td key={j} className="p-2.5">
+                                      {typeof val === "number" && val > 10000 && j === 0
+                                        ? formatCurrency(val)
+                                        : String(val ?? "null")}
+                                    </td>
+                                  ))}
+                                </tr>
                               ))}
+                            </tbody>
+                          </table>
+                          {msg.data.length > 15 && (
+                            <div className="text-[10px] text-center text-muted-foreground bg-muted/40 p-2 border-t">
+                              Showing first 15 rows of {msg.data.length} total.
                             </div>
-                          </div>
-                        )}
-
-                        {structuralInsights && (
-                          <div className="p-3 bg-primary/5 border border-primary/20 rounded-lg space-y-3">
-                            <p className="text-[9px] font-bold text-primary uppercase">Structural Insights (Graph)</p>
-                            <div className="space-y-2">
-                              <div className="flex justify-between text-[10px]">
-                                <span className="text-muted-foreground">Max Cascade Depth</span>
-                                <span className="font-bold">{structuralInsights.maxDepth} hops</span>
-                              </div>
-                              <div className="flex justify-between text-[10px]">
-                                <span className="text-muted-foreground">Isolated Tables</span>
-                                <span className="font-bold">{structuralInsights.isolated.length}</span>
-                              </div>
-                              {structuralInsights.hubs.length > 0 && (
-                                <div className="space-y-1">
-                                  <p className="text-[8px] text-muted-foreground uppercase">Central Hubs Detected</p>
-                                  <div className="flex flex-wrap gap-1">
-                                    {structuralInsights.hubs.slice(0, 3).map((h: any, i: number) => (
-                                      <span key={i} className="px-1.5 py-0.5 bg-primary/10 rounded text-[9px] font-mono">{h.name}</span>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="h-48 flex flex-col items-center justify-center text-center opacity-40">
-                        <BarChart3 className="w-8 h-8 mb-2" />
-                        <p className="text-[10px] uppercase">Execute query to run<br />governance & quality checks</p>
-                      </div>
+                          )}
+                        </div>
+                      </details>
                     )}
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-primary font-bold text-[10px] uppercase tracking-widest mb-4">
-                      <ScrollText className="w-4 h-4" /> Underlying Logic & Calculations
-                    </div>
-
-                    <div className="space-y-6">
-                      {qualityResults?.executedQueries && (
-                        <div className="space-y-3">
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase border-b border-primary/10 pb-1">Data Quality (SQL & Neo4j)</p>
-                          {qualityResults.executedQueries.map((q: any, i: number) => (
-                            <div key={i} className="space-y-1.5 animate-in fade-in duration-500">
-                              <p className="text-[9px] font-mono text-primary/70">{q.type}</p>
-                              <pre className="p-2 bg-black/40 border border-primary/10 rounded text-[9px] font-mono text-emerald-400 overflow-x-auto whitespace-pre-wrap">
-                                {q.query}
-                              </pre>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {structuralInsights?.executedQueries && (
-                        <div className="space-y-3">
-                          <p className="text-[10px] font-bold text-muted-foreground uppercase border-b border-primary/10 pb-1">Structural Analysis (Cypher)</p>
-                          {structuralInsights.executedQueries.map((q: any, i: number) => (
-                            <div key={i} className="space-y-1.5 animate-in fade-in duration-500">
-                              <p className="text-[9px] font-mono text-primary/70">{q.type}</p>
-                              <pre className="p-2 bg-black/40 border border-primary/10 rounded text-[9px] font-mono text-amber-400 overflow-x-auto whitespace-pre-wrap">
-                                {q.query}
-                              </pre>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {!qualityResults?.executedQueries && !structuralInsights?.executedQueries && (
-                        <div className="h-48 flex flex-col items-center justify-center text-center opacity-40">
-                          <Code2 className="w-8 h-8 mb-2" />
-                          <p className="text-[10px] uppercase">No execution logs available.<br />Run analysis to see queries.</p>
-                        </div>
-                      )}
-                    </div>
                   </div>
                 )}
               </div>
-            </Card>
+            </div>
+          ))}
+
+          {messages.length === 1 && (
+            <div className="max-w-4xl mx-auto pt-6 pb-8 space-y-6">
+              <div className="text-center space-y-2">
+                <p className="text-primary text-[10px] font-bold uppercase tracking-[0.2em] mb-1">Quick AI Prompt Board</p>
+                <h2 className="text-2xl font-bold tracking-tight">Select a Preset Analysis Task</h2>
+                <p className="text-xs text-muted-foreground max-w-md mx-auto leading-relaxed">
+                  Click any of the cards below to instantly run complex analytics and visualize the results.
+                </p>
+              </div>
+              
+              <div className="grid sm:grid-cols-2 gap-4">
+                {[
+                  {
+                    title: "Luxury Sales Specialists",
+                    description: "Retrieve representatives who sold the most cars in the luxury bracket (>= 1.5M EGP).",
+                    query: "Who sold the most luxury cars and what is their total revenue?",
+                    icon: Users,
+                  },
+                  {
+                    title: "Showroom Stock Warnings",
+                    description: "Check which showrooms have low inventory of specific car models (under 5 units).",
+                    query: "Show showroom car models with low inventory under 5 units.",
+                    icon: Car,
+                  },
+                  {
+                    title: "Average Transaction by City",
+                    description: "Compare average deal size and transaction revenue across Cairo, Alexandria, and Giza.",
+                    query: "What is the average transaction price of cars sold in each city?",
+                    icon: MapPin,
+                  },
+                  {
+                    title: "Monthly Revenue Outlook",
+                    description: "Analyze monthly sales history to support revenue planning and growth projections.",
+                    query: "Show our monthly revenue trend.",
+                    icon: TrendingUp,
+                  },
+                ].map((card) => {
+                  const Icon = card.icon;
+                  return (
+                    <button
+                      key={card.title}
+                      type="button"
+                      onClick={() => handleSendMessage(card.query)}
+                      className="text-left p-5 rounded-2xl border transition-all duration-300 hover:scale-[1.01] active:scale-95 flex gap-4 border-border bg-card/25 hover:border-primary/30 group"
+                    >
+                      <div className="w-12 h-12 rounded-xl bg-background/80 border border-border flex items-center justify-center shrink-0 shadow-sm">
+                        <Icon className="w-5 h-5 text-primary transition-transform group-hover:scale-110" />
+                      </div>
+                      <div className="space-y-1">
+                        <h4 className="text-sm font-bold text-foreground flex items-center gap-1.5">
+                          {card.title}
+                          <ArrowRight className="w-3.5 h-3.5 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all text-primary" />
+                        </h4>
+                        <p className="text-xs text-muted-foreground leading-normal">
+                          {card.description}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div ref={scrollRef} />
+        </div>
+
+        {/* Input Bar & Actions */}
+        <div className="space-y-3 pt-3 border-t border-border/50 bg-background/50 backdrop-blur-lg">
+          {/* Quick Prompt Pills */}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[10px] text-muted-foreground font-bold uppercase mr-1 select-none flex items-center gap-1">
+              <HelpCircle className="w-3 h-3 text-red-500" /> Quick Ask:
+            </span>
+            {QUICK_PROMPTS.map((pill) => {
+              const Icon = pill.icon;
+              return (
+                <button
+                  key={pill.label}
+                  disabled={isPending}
+                  onClick={() => handleSendMessage(pill.text)}
+                  className="px-3 py-1 rounded-full border border-border/80 bg-card/40 hover:bg-red-500/10 hover:border-red-500/20 text-[10px] sm:text-xs text-muted-foreground hover:text-red-500 transition-all font-medium cursor-pointer flex items-center gap-1.5"
+                >
+                  <Icon className="w-3 h-3 text-muted-foreground" />
+                  {pill.label}
+                </button>
+              );
+            })}
           </div>
+
+          {/* Form Text Input */}
+          <form onSubmit={handleFormSubmit} className="flex gap-2">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              disabled={isPending}
+              placeholder="Ask a question in plain English or write direct SQL..."
+              className="flex-1 h-12 rounded-xl border border-input bg-card/30 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-red-500/50 transition-colors"
+            />
+            <Button
+              type="submit"
+              disabled={isPending || !input.trim()}
+              className="h-12 w-12 rounded-xl flex items-center justify-center shrink-0 bg-red-600 hover:bg-red-700 text-white border-none"
+            >
+              <Send className="w-4 h-4" />
+            </Button>
+          </form>
         </div>
       </div>
     </DashboardLayout>
+  );
+}
+
+// Simple Helper component used for inline error styling
+function AlertCircle(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" x2="12" y1="8" y2="12" />
+      <line x1="12" x2="12" y1="16" y2="16.01" />
+    </svg>
   );
 }

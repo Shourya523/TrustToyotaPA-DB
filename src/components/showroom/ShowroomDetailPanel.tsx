@@ -169,7 +169,7 @@ export default function ShowroomDetailPanel({ stats, loading, onBack, onBackToOv
         <div className="lg:col-span-2 rounded-xl border border-border bg-card/30 p-4">
           <p className="text-sm font-semibold mb-4">Employee Sales — {reportMonth}</p>
           {chartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={220}>
+            <ResponsiveContainer width="100%" height={320}>
               <BarChart data={chartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis dataKey="name" tick={{ fontSize: 11 }} className="fill-muted-foreground" />
@@ -199,7 +199,7 @@ export default function ShowroomDetailPanel({ stats, loading, onBack, onBackToOv
           <p className="text-sm font-semibold mb-4">Payment Methods</p>
           {paymentData.length > 0 ? (
             <>
-              <ResponsiveContainer width="100%" height={160}>
+              <ResponsiveContainer width="100%" height={260}>
                 <PieChart>
                   <Pie
                     data={paymentData}
@@ -207,8 +207,8 @@ export default function ShowroomDetailPanel({ stats, loading, onBack, onBackToOv
                     nameKey="method"
                     cx="50%"
                     cy="50%"
-                    innerRadius={40}
-                    outerRadius={65}
+                    innerRadius={60}
+                    outerRadius={95}
                     paddingAngle={3}
                   >
                     {paymentData.map((_, i) => (
@@ -243,7 +243,7 @@ export default function ShowroomDetailPanel({ stats, loading, onBack, onBackToOv
       {stats.monthlyTrend.length > 0 && (
         <div className="rounded-xl border border-border bg-card/30 p-4">
           <p className="text-sm font-semibold mb-4">Revenue Trend</p>
-          <ResponsiveContainer width="100%" height={160}>
+          <ResponsiveContainer width="100%" height={300}>
             <LineChart data={stats.monthlyTrend} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
               <XAxis dataKey="month" tick={{ fontSize: 11 }} className="fill-muted-foreground" />

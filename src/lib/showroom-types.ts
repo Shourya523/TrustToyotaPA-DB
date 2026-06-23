@@ -22,6 +22,8 @@ export type EmployeeSale = {
   commission: number;
   topModel: string;
   paymentMethod: string;
+  midBudgetSold: number;
+  luxurySold: number;
 };
 
 export type BranchStats = {
@@ -43,6 +45,9 @@ export type NationalStats = {
   totalCarsSold: number;
   branchStats: BranchStats[];
   reportMonth: string;
+  topCars: { name: string; count: number; revenue: number }[];
+  topSalespeople: { name: string; count: number; revenue: number; branch: string }[];
+  topBranches: { name: string; city: string; count: number; revenue: number }[];
 };
 
 export type CityMapPoint = {

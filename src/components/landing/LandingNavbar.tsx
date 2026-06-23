@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Button } from "../ui/button";
-import { Database, Menu, X, LogOut } from "lucide-react";
+import { Car, Menu, X, LogOut } from "lucide-react";
 import { useState } from "react";
 import { authClient } from "./auth";
 import { useRouter } from "next/navigation";
@@ -44,14 +44,13 @@ const LandingNavbar = () => {
     <nav className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border/50">
       <div className="container mx-auto flex items-center h-14 px-6 relative">
         <Link href="/" className="flex items-center gap-2.5 font-semibold text-base tracking-tight cursor-pointer select-none">
-          <Database className="w-5 h-5 text-primary" />
-          DataLens AI
+          <Car className="w-5 h-5 text-primary" />
+          Trust Toyota
         </Link>
         <div className="hidden md:flex absolute left-1/2 -translate-x-1/2 items-center gap-8 text-sm text-muted-foreground">
+          <a href="#overview" className="hover:text-foreground transition-colors cursor-pointer">Overview</a>
           <a href="#features" className="hover:text-foreground transition-colors cursor-pointer">Features</a>
-          <a href="#showcase" className="hover:text-foreground transition-colors cursor-pointer">Showcase</a>
-          <a href="#integrations" className="hover:text-foreground transition-colors cursor-pointer">Integrations</a>
-          <a href="#how-it-works" className="hover:text-foreground transition-colors cursor-pointer">How It Works</a>
+          <a href="#regions" className="hover:text-foreground transition-colors cursor-pointer">Egypt Network</a>
         </div>
 
         <div className="hidden md:flex items-center gap-3 ml-auto">
@@ -72,7 +71,7 @@ const LandingNavbar = () => {
                 size="sm"
                 onClick={handleStartFree}
               >
-                Start Free
+                Enter Portal
               </Button>
             </>
           ) : (
@@ -83,7 +82,7 @@ const LandingNavbar = () => {
 
               <Button size="sm" asChild>
                 <Link href="/dashboard">
-                  Go to Dashboard
+                  Dashboard
                 </Link>
               </Button>
 
@@ -115,10 +114,9 @@ const LandingNavbar = () => {
       {/* Mobile Menu */}
       {open && (
         <div className="md:hidden border-t border-border bg-background p-6 space-y-4">
+          <a href="#overview" className="block text-sm text-muted-foreground">Overview</a>
           <a href="#features" className="block text-sm text-muted-foreground">Features</a>
-          <a href="#showcase" className="block text-sm text-muted-foreground">Showcase</a>
-          <a href="#integrations" className="block text-sm text-muted-foreground">Integrations</a>
-          <a href="#how-it-works" className="block text-sm text-muted-foreground">How It Works</a>
+          <a href="#regions" className="block text-sm text-muted-foreground">Egypt Network</a>
 
           {!session ? (
             <div className="space-y-2">
@@ -126,13 +124,13 @@ const LandingNavbar = () => {
                 Log In
               </Button>
               <Button size="sm" className="w-full" onClick={handleStartFree}>
-                Start Free
+                Enter Portal
               </Button>
             </div>
           ) : (
             <>
               <Button size="sm" className="w-full" asChild>
-                <Link href="/dashboard">Go to Dashboard</Link>
+                <Link href="/dashboard">Dashboard</Link>
               </Button>
               <Button size="sm" variant="ghost" className="w-full text-destructive" onClick={handleSignOut}>
                 <LogOut className="w-4 h-4 mr-2" /> Log Out

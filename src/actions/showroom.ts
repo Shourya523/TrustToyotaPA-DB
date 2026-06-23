@@ -105,6 +105,8 @@ async function fetchBranchStats(
       commission: string;
       top_model: string | null;
       payment_method: string | null;
+      mid_budget_sold: string;
+      luxury_sold: string;
     }[]
   >`
     WITH month_contracts AS (
@@ -134,7 +136,9 @@ async function fetchBranchStats(
         COUNT(*)::int AS cars_sold,
         COALESCE(SUM(price), 0) AS revenue,
         MAX(car_label) AS top_model,
-        MODE() WITHIN GROUP (ORDER BY payment_method) AS payment_method
+        MODE() WITHIN GROUP (ORDER BY payment_method) AS payment_method,
+        COUNT(CASE WHEN price < 1500000 THEN 1 END)::int AS mid_budget_sold,
+        COUNT(CASE WHEN price >= 1500000 THEN 1 END)::int AS luxury_sold
       FROM month_contracts
       GROUP BY emp_ssn
     )
@@ -153,7 +157,9 @@ async function fetchBranchStats(
       COALESCE(es.revenue, 0)::text AS revenue,
       COALESCE(es.revenue * COALESCE(s.comm_pct, 0), 0)::text AS commission,
       es.top_model,
-      es.payment_method
+      es.payment_method,
+      COALESCE(es.mid_budget_sold, 0)::text AS mid_budget_sold,
+      COALESCE(es.luxury_sold, 0)::text AS luxury_sold
     FROM employee e
     JOIN job j ON j.job_id = e.job_id
     LEFT JOIN salary_of_jobs s ON s.emp_ssn = e.ssn
@@ -178,6 +184,8 @@ async function fetchBranchStats(
     commission: Number(r.commission),
     topModel: r.top_model ?? "—",
     paymentMethod: r.payment_method ?? "—",
+    midBudgetSold: Number(r.mid_budget_sold),
+    luxurySold: Number(r.luxury_sold),
   }));
 
   const totalRevenue = sales.reduce((s, e) => s + e.revenue, 0);
@@ -238,6 +246,55 @@ export async function getNationalShowroomStats(): Promise<NationalStats> {
 
     const [empCount] = await sql<{ count: string }[]>`SELECT COUNT(*)::text AS count FROM employee`;
 
+    // Query top cars
+    const topCarsRows = await sql<{ name: string; count: number; revenue: string }[]>`
+      SELECT 
+        comp.name || ' ' || car.model AS name, 
+        COUNT(*)::int AS count,
+        COALESCE(SUM(cph.price), 0)::text AS revenue
+      FROM contract con
+      JOIN car ON car.car_id = con.car_id
+      JOIN company comp ON comp.company_id = car.company_id
+      LEFT JOIN LATERAL (
+        SELECT price FROM car_price_history
+        WHERE car_id = con.car_id
+        ORDER BY price_date DESC
+        LIMIT 1
+      ) cph ON true
+      WHERE con.contract_date >= ${start} AND con.contract_date < ${end}
+      GROUP BY comp.name, car.model
+      ORDER BY count DESC, revenue DESC
+      LIMIT 5
+    `;
+
+    const topCars = topCarsRows.map(r => ({
+      name: r.name,
+      count: r.count,
+      revenue: Number(r.revenue)
+    }));
+
+    // Aggregate top salespeople from branch stats
+    const topSalespeople = branchStats
+      .flatMap(b => b.sales.map(s => ({
+        name: `${s.fname} ${s.lname}`,
+        count: s.carsSold,
+        revenue: s.revenue,
+        branch: b.branch.street
+      })))
+      .sort((x, y) => y.revenue - x.revenue)
+      .slice(0, 5);
+
+    // Aggregate top branches
+    const topBranches = branchStats
+      .map(b => ({
+        name: b.branch.street,
+        city: b.branch.city,
+        count: b.totalCarsSold,
+        revenue: b.totalRevenue
+      }))
+      .sort((x, y) => y.revenue - x.revenue)
+      .slice(0, 5);
+
     return {
       totalBranches: branches.length,
       totalEmployees: Number(empCount?.count ?? 0),
@@ -245,6 +302,9 @@ export async function getNationalShowroomStats(): Promise<NationalStats> {
       totalCarsSold: branchStats.reduce((s, b) => s + b.totalCarsSold, 0),
       branchStats,
       reportMonth: label,
+      topCars,
+      topSalespeople,
+      topBranches
     };
   });
 }
@@ -325,5 +385,199 @@ export async function getShowroomCities(): Promise<string[]> {
   return withDb(async (sql) => {
     const rows = await sql<{ city: string }[]>`SELECT DISTINCT city FROM branch ORDER BY city`;
     return rows.map((r) => r.city);
+  });
+}
+
+export async function getLowInventoryAlerts() {
+  return withDb(async (sql) => {
+    const rows = await sql<
+      {
+        model: string;
+        brand: string;
+        street: string;
+        city: string;
+        no_of_cars: number;
+      }[]
+    >`
+      SELECT 
+        c.model,
+        comp.name AS brand,
+        b.street,
+        b.city,
+        n.no_of_cars
+      FROM no_of_cars n
+      JOIN car c ON c.car_id = n.car_id
+      JOIN company comp ON comp.company_id = c.company_id
+      JOIN branch b ON b.branch_id = n.branch_id
+      WHERE n.no_of_cars < 5
+      ORDER BY n.no_of_cars ASC
+      LIMIT 10
+    `;
+    return rows.map((r) => ({
+      model: r.model,
+      brand: r.brand,
+      street: r.street,
+      city: r.city,
+      noOfCars: Number(r.no_of_cars),
+    }));
+  });
+}
+
+export async function getCategoryMetrics() {
+  return withDb(async (sql) => {
+    // 1. Models category
+    const modelsRows = await sql<{ name: string; units_sold: number; revenue: string }[]>`
+      SELECT 
+        c.model AS name, 
+        COUNT(con.contract_id)::int AS units_sold,
+        COALESCE(SUM(cph.price), 0)::text AS revenue
+      FROM car c
+      LEFT JOIN contract con ON con.car_id = c.car_id
+      LEFT JOIN LATERAL (
+        SELECT price FROM car_price_history
+        WHERE car_id = c.car_id
+        ORDER BY price_date DESC
+        LIMIT 1
+      ) cph ON true
+      GROUP BY c.model
+      ORDER BY units_sold DESC, revenue DESC
+    `;
+
+    // 2. Brands category
+    const brandsRows = await sql<{ name: string; units_sold: number; revenue: string }[]>`
+      SELECT 
+        comp.name AS name, 
+        COUNT(con.contract_id)::int AS units_sold,
+        COALESCE(SUM(cph.price), 0)::text AS revenue
+      FROM company comp
+      JOIN car c ON c.company_id = comp.company_id
+      LEFT JOIN contract con ON con.car_id = c.car_id
+      LEFT JOIN LATERAL (
+        SELECT price FROM car_price_history
+        WHERE car_id = c.car_id
+        ORDER BY price_date DESC
+        LIMIT 1
+      ) cph ON true
+      GROUP BY comp.name
+      ORDER BY units_sold DESC, revenue DESC
+    `;
+
+    // 3. Payments category
+    const paymentsRows = await sql<{ name: string; count: number; revenue: string }[]>`
+      SELECT 
+        pm.method AS name, 
+        COUNT(con.contract_id)::int AS count,
+        COALESCE(SUM(cph.price), 0)::text AS revenue
+      FROM payment_method pm
+      LEFT JOIN contract con ON con.method_id = pm.method_id
+      LEFT JOIN LATERAL (
+        SELECT price FROM car_price_history
+        WHERE car_id = con.car_id
+        ORDER BY price_date DESC
+        LIMIT 1
+      ) cph ON true
+      GROUP BY pm.method
+      ORDER BY count DESC
+    `;
+
+    // 4. Genders category
+    const gendersRows = await sql<{ name: string; count: number; revenue: string }[]>`
+      SELECT 
+        cust.gender AS name, 
+        COUNT(con.contract_id)::int AS count,
+        COALESCE(SUM(cph.price), 0)::text AS revenue
+      FROM customer cust
+      LEFT JOIN contract con ON con.cust_ssn = cust.ssn
+      LEFT JOIN LATERAL (
+        SELECT price FROM car_price_history
+        WHERE car_id = con.car_id
+        ORDER BY price_date DESC
+        LIMIT 1
+      ) cph ON true
+      WHERE cust.gender IS NOT NULL AND cust.gender IN ('M', 'F')
+      GROUP BY cust.gender
+    `;
+
+    return {
+      models: modelsRows.map((r) => ({
+        name: r.name,
+        unitsSold: Number(r.units_sold),
+        revenue: Number(r.revenue),
+        avgPrice: Number(r.units_sold) > 0 ? Number(r.revenue) / Number(r.units_sold) : 0,
+      })),
+      brands: brandsRows.map((r) => ({
+        name: r.name,
+        unitsSold: Number(r.units_sold),
+        revenue: Number(r.revenue),
+      })),
+      payments: paymentsRows.map((r) => ({
+        name: r.name,
+        count: Number(r.count),
+        revenue: Number(r.revenue),
+      })),
+      genders: gendersRows.map((r) => ({
+        name: r.name === "M" ? "Male Customers" : "Female Customers",
+        count: Number(r.count),
+        revenue: Number(r.revenue),
+        avgSpend: Number(r.count) > 0 ? Number(r.revenue) / Number(r.count) : 0,
+      })),
+    };
+  });
+}
+
+export async function getBestRepForCarAction(carModel: string) {
+  return withDb(async (sql) => {
+    const rows = await sql<{
+      ssn: number;
+      fname: string;
+      lname: string;
+      job_title: string;
+      city: string;
+      cars_sold: number;
+      revenue: string;
+      luxury_sold: number;
+      mid_budget_sold: number;
+      top_model: string | null;
+    }[]>`
+      SELECT 
+        e.ssn,
+        e.fname,
+        e.lname,
+        j.title AS job_title,
+        e.city,
+        COUNT(c.contract_id)::int AS cars_sold,
+        COALESCE(SUM(cph.price), 0)::text AS revenue,
+        COUNT(CASE WHEN cph.price >= 1500000 THEN 1 END)::int AS luxury_sold,
+        COUNT(CASE WHEN cph.price < 1500000 THEN 1 END)::int AS mid_budget_sold,
+        MAX(comp.name || ' ' || car.model) AS top_model
+      FROM employee e
+      JOIN job j ON j.job_id = e.job_id
+      JOIN contract c ON c.emp_ssn = e.ssn
+      JOIN car ON car.car_id = c.car_id
+      JOIN company comp ON comp.company_id = car.company_id
+      LEFT JOIN LATERAL (
+        SELECT price FROM car_price_history
+        WHERE car_id = c.car_id
+        ORDER BY price_date DESC
+        LIMIT 1
+      ) cph ON true
+      WHERE (comp.name || ' ' || car.model) = ${carModel}
+      GROUP BY e.ssn, e.fname, e.lname, j.title, e.city
+      ORDER BY cars_sold DESC, revenue DESC
+      LIMIT 5
+    `;
+    
+    return rows.map(r => ({
+      ssn: r.ssn,
+      fname: r.fname,
+      lname: r.lname,
+      jobTitle: r.job_title,
+      city: r.city,
+      carsSold: Number(r.cars_sold),
+      revenue: Number(r.revenue),
+      luxurySold: Number(r.luxury_sold),
+      midBudgetSold: Number(r.mid_budget_sold),
+      topModel: r.top_model ?? "—"
+    }));
   });
 }

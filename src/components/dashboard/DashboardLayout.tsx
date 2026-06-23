@@ -10,7 +10,7 @@ import {
   GitBranch,
   MessageSquare,
   Settings,
-  Database,
+  Car,
   ChevronLeft,
   Menu,
   X,
@@ -19,10 +19,14 @@ import {
   LogOut,
   Sparkles,
   ShieldAlert,
+  Layers,
 } from "lucide-react";
 import { ThemeToggle } from "../theme-toggle";
 import { useState, useEffect } from "react";
 import { authClient } from "@/src/components/landing/auth";
+import VoiceMicAssistant from "../showroom/VoiceMicAssistant";
+
+import GlobalAIChatDrawer from "./GlobalAIChatDrawer";
 
 const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
   const [collapsed, setCollapsed] = useState(false);
@@ -53,18 +57,25 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
   const navItems = [
     { label: "Overview", icon: LayoutDashboard, path: "/dashboard" },
     { 
-      label: "Tables", 
+      label: "Category Insights", 
+      icon: BarChart3, 
+      path: "/dashboard/categories" 
+    },
+    {
+      label: "Playground",
+      icon: Layers,
+      path: "/dashboard/playground",
+    },
+    { 
+      label: "Schema Guide", 
       icon: Table2, 
       path: "/dashboard/tables" 
     },
-    { label: "Data Quality", icon: BarChart3, path: "/dashboard/quality" },
-    // { label: "Compliance", icon: ShieldCheck, path: "/dashboard/compliance" },
-    { label: "Lineage", icon: GitBranch, path: "/dashboard/lineage" },
-    { label: "Impact Simulator", icon: ShieldAlert, path: "/dashboard/impact" },
-    { label: "Query", icon: Sparkles, path: "/dashboard/studio" },
-    { label: "Query Runner", icon: CodeXml, path: "/dashboard/query" }
-//    { label: "AI Chat", icon: MessageSquare, path: "/dashboard/chat" },
-    // { label: "Settings", icon: Settings, path: "/dashboard/settings" },
+    { 
+      label: "Showroom Assistant", 
+      icon: MessageSquare, 
+      path: "/dashboard/query" 
+    }
   ];
 
   return (
@@ -83,10 +94,10 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
       >
         <div className="flex items-center justify-between h-16 px-4 border-b border-sidebar-border">
           <Link href="/" className="flex items-center gap-3 select-none">
-            <Database className="w-5 h-5 text-primary shrink-0" />
+            <Car className="w-5 h-5 text-primary shrink-0" />
             {(!collapsed || isMobileMenuOpen) && (
               <span className="text-sm font-bold tracking-tight text-sidebar-accent-foreground whitespace-nowrap">
-                DataLens AI
+                Trust Toyota
               </span>
             )}
           </Link>
@@ -123,41 +134,7 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
             );
           })}
 
-          {(!collapsed || isMobileMenuOpen) && (
-            <div className="px-3 mt-6 select-none animate-in fade-in duration-200">
-              <div className="border border-emerald-500/25 bg-emerald-500/10 p-3.5 rounded-xl space-y-3.5 shadow-[0_0_12px_rgba(16,185,129,0.08)] hover:border-emerald-500/40 hover:shadow-[0_0_18px_rgba(16,185,129,0.15)] transition-all duration-300">
-                <span className="text-[10px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Newly Added
-                </span>
-                <div className="space-y-3 text-xs text-sidebar-foreground/85 font-medium">
-                  {/* CLI Agent */}
-                  <div className="flex items-center gap-1.5">
-                    <span>CLI Agent</span>
-                    <span className="text-[8px] bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 border border-indigo-500/20 px-1.5 py-0.5 rounded uppercase font-bold font-mono">CLI</span>
-                  </div>
 
-                  {/* Agent on Site */}
-                  <div className="flex items-center gap-1.5">
-                    <span>Agent on Site</span>
-                    <span className="text-[8px] bg-purple-500/10 text-purple-500 dark:text-purple-400 border border-purple-500/20 px-1.5 py-0.5 rounded uppercase font-bold font-mono">Site</span>
-                  </div>
-
-                  {/* MCP Client */}
-                  <div className="flex items-center gap-1.5">
-                    <span>MCP Client</span>
-                    <span className="text-[8px] bg-amber-500/10 text-amber-500 dark:text-amber-400 border border-amber-500/20 px-1.5 py-0.5 rounded uppercase font-bold font-mono">MCP</span>
-                  </div>
-
-                  {/* Documentation Engine */}
-                  <div className="flex items-center gap-1.5">
-                    <span>Documentation</span>
-                    <span className="text-[8px] bg-teal-500/10 text-teal-500 dark:text-teal-400 border border-teal-500/20 px-1.5 py-0.5 rounded uppercase font-bold font-mono">Docs</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
         </nav>
 
         {/* Bottom Actions Section */}
@@ -194,8 +171,8 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="flex lg:hidden items-center justify-between h-16 px-4 border-b border-sidebar-border bg-sidebar/50 backdrop-blur-md sticky top-0 z-30">
           <div className="flex items-center gap-3">
-            <Database className="w-5 h-5 text-primary" />
-            <span className="font-bold text-sm">DataLens AI</span>
+            <Car className="w-5 h-5 text-primary" />
+            <span className="font-bold text-sm">Trust Toyota</span>
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
@@ -209,10 +186,16 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
         </header>
 
         <main className="flex-1 overflow-x-hidden">
-          <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6 lg:p-10">
-            {children}
-          </div>
+          {pathname === "/dashboard/playground" ? (
+            children
+          ) : (
+            <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6 lg:p-10">
+              {children}
+            </div>
+          )}
         </main>
+        <VoiceMicAssistant />
+        <GlobalAIChatDrawer />
       </div>
     </div>
   );

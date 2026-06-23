@@ -296,17 +296,109 @@ function extractSqlFromResponse(text: string): string {
     return selectMatch ? selectMatch[1].trim() : text.trim();
 }
 
-export async function textToSqlAction(userQuestion: string, connectionId: string) {
-    try {
-        const contextResult = await getRelevantTables(userQuestion, connectionId);
+export async function getCompleteSchemaContext(connectionId: string): Promise<string> {
+    const TOYOTA_FALLBACK_SCHEMA = `
+Table "branch": [branch_id (integer PRIMARY KEY), street (varchar NOT NULL), city (varchar NOT NULL), building_number (integer), contact_number (integer)]
+Table "employee": [ssn (integer PRIMARY KEY), fname (varchar NOT NULL), lname (varchar NOT NULL), gender (char), birth_date (date), phone_1 (varchar), city (varchar), job_id (integer), branch_id (integer)]
+Table "job": [job_id (integer PRIMARY KEY), title (varchar NOT NULL)]
+Table "salary_of_jobs": [emp_ssn (integer PRIMARY KEY), salary (integer), comm_pct (numeric)]
+Table "contract": [contract_id (integer PRIMARY KEY), car_id (integer), branch_id (integer), emp_ssn (integer), cust_ssn (integer), method_id (integer), contract_date (date NOT NULL)]
+Table "payment_method": [method_id (integer PRIMARY KEY), method (varchar NOT NULL)]
+Table "car": [car_id (integer PRIMARY KEY), company_id (integer), model (varchar NOT NULL), year (date)]
+Table "company": [company_id (integer PRIMARY KEY), name (varchar NOT NULL)]
+Table "customer": [ssn (integer PRIMARY KEY), fname (varchar NOT NULL), lname (varchar NOT NULL), gender (char), phone_1 (varchar), city (varchar)]
+Table "color": [color_id (integer PRIMARY KEY), name (varchar NOT NULL)]
+Table "car_color": [car_id (integer), color_id (integer)]
+`;
 
-        if (!contextResult.success || !contextResult.data || contextResult.data.length === 0) {
-            return { success: false, error: "Could not find relevant schema context. Sync your tables first." };
+    let neo4jRelationships = "";
+    let neo4jSession;
+    try {
+        neo4jSession = getSession();
+        const graphRes = await neo4jSession.executeRead(async (tx: any) => {
+            const cypher = `
+                MATCH (srcEntity:Entity {connectionId: $connectionId})-[:HAS_FIELD]->(srcField:Field)-[:REFERENCES_FIELD]->(tgtField:Field)<-[:HAS_FIELD]-(tgtEntity:Entity)
+                RETURN srcEntity.name AS sourceTable, srcField.name AS sourceColumn,
+                       tgtEntity.name AS targetTable, tgtField.name AS targetColumn
+            `;
+            return await tx.run(cypher, { connectionId });
+        });
+
+        const relations: string[] = [];
+        graphRes.records.forEach((record: any) => {
+            relations.push(`- Table "${record.get('sourceTable')}" column "${record.get('sourceColumn')}" references Table "${record.get('targetTable')}" column "${record.get('targetColumn')}"`);
+        });
+
+        if (relations.length > 0) {
+            neo4jRelationships = "\n\nGraph-verified Relationships (use these exact column names for JOINs):\n" + relations.join("\n");
+        }
+    } catch (err) {
+        console.error("[RAG] Failed to enrich schema context with Neo4j graph relationships:", err);
+    } finally {
+        if (neo4jSession) {
+            await neo4jSession.close();
+        }
+    }
+
+    try {
+        // 1. Fetch tables (entities) from PostgreSQL metadata
+        const dbEntities = await db
+            .select()
+            .from(entities)
+            .where(eq(entities.connectionId, connectionId));
+
+        if (dbEntities.length > 0) {
+            const entityIds = dbEntities.map(e => e.id);
+            const dbFields = await db
+                .select()
+                .from(fields)
+                .where(inArray(fields.entityId, entityIds));
+
+            const summary = dbEntities.map(entity => {
+                const tableFields = dbFields.filter(f => f.entityId === entity.id);
+                const cols = tableFields.map(f => `${f.name} (${f.type}${f.isNullable ? '' : ' NOT NULL'}${f.isPrimaryKey ? ' PRIMARY KEY' : ''})`);
+                return `Table "${entity.name}": [${cols.join(", ")}]`;
+            }).join("\n") + neo4jRelationships;
+            if (summary.trim()) return summary;
         }
 
-        const contextString = contextResult.data
-            .map((c: any) => c.content)
-            .join("\n");
+        // 2. Fallback: Query live database information_schema directly
+        const connString = await getConnectionStringById(connectionId, undefined as any);
+        const resolvedUri = connString || process.env.DATABASE_URL;
+        
+        if (resolvedUri) {
+            const metadataRes = await getDatabaseMetadata(resolvedUri);
+            if (metadataRes.success && metadataRes.data) {
+                const schema = metadataRes.data.schema;
+                const tableMap = new Map<string, string[]>();
+                schema.forEach((col: any) => {
+                    const t = col.table_name;
+                    const pkey = col.is_primary_key ? " PRIMARY KEY" : "";
+                    const nullable = col.is_nullable === "YES" ? "" : " NOT NULL";
+                    if (!tableMap.has(t)) tableMap.set(t, []);
+                    tableMap.get(t)!.push(`${col.column_name} (${col.data_type}${nullable}${pkey})`);
+                });
+                const summary = Array.from(tableMap.entries())
+                    .map(([tableName, cols]) => `Table "${tableName}": [${cols.join(", ")}]`)
+                    .join("\n");
+                if (summary.trim()) return summary;
+            }
+        }
+    } catch (e) {
+        console.error("Error generating schema context:", e);
+    }
+
+    // 3. Fallback: Return static Toyota Showroom Schema
+    return TOYOTA_FALLBACK_SCHEMA;
+}
+
+export async function textToSqlAction(userQuestion: string, connectionId: string) {
+    try {
+        const contextString = await getCompleteSchemaContext(connectionId);
+
+        if (!contextString || !contextString.trim()) {
+            return { success: false, error: "Could not extract or understand database schema." };
+        }
 
         const model = genAI.getGenerativeModel({
             model: "gemini-3.1-flash-lite",
@@ -343,15 +435,11 @@ Respond with:
 
 export async function askAiAction(userQuestion: string, connectionId: string) {
     try {
-        const contextResult = await getRelevantTables(userQuestion, connectionId);
+        const contextString = await getCompleteSchemaContext(connectionId);
 
-        if (!contextResult.success || !contextResult.data || contextResult.data.length === 0) {
-            return { success: false, error: "Could not find relevant schema context." };
+        if (!contextString || !contextString.trim()) {
+            return { success: false, error: "Could not extract or understand database schema." };
         }
-
-        const contextString = contextResult.data
-            .map((c: any) => c.content)
-            .join("\n");
 
         const model = genAI.getGenerativeModel({
             model: "gemini-3.1-flash-lite",
