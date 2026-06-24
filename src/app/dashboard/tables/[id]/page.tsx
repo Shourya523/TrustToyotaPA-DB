@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/src/components/ui/ta
 import { DocumentationTab } from "@/src/components/dashboard/DocumentationTab";
 import { ChatTab } from "@/src/components/dashboard/ChatTab";
 import { AgentTab } from "@/src/components/dashboard/AgentTab";
+import { DEFAULT_CONNECTION_ID } from "@/src/lib/database-uri";
 
 interface TableInfo {
   name: string;
@@ -45,11 +46,14 @@ const DashboardTables = ({ params }: { params: Promise<{ id: string }> }) => {
 
       if (result.success && result.data) {
         const { schema, counts } = result.data;
-        const organized = schema.reduce((acc: any, curr: any) => {
-          if (!acc[curr.table_name]) acc[curr.table_name] = [];
-          acc[curr.table_name].push(curr.column_name);
-          return acc;
-        }, {});
+        const targetTables = ["cars", "customers", "sales"];
+        const organized = schema
+          .filter((curr: any) => id !== DEFAULT_CONNECTION_ID || targetTables.includes(curr.table_name.toLowerCase()))
+          .reduce((acc: any, curr: any) => {
+            if (!acc[curr.table_name]) acc[curr.table_name] = [];
+            acc[curr.table_name].push(curr.column_name);
+            return acc;
+          }, {});
 
         const formattedTables = Object.entries(organized).map(([name, columns]) => {
           const countObj = counts.find((c: any) => c.table_name === name);
@@ -86,13 +90,16 @@ const DashboardTables = ({ params }: { params: Promise<{ id: string }> }) => {
       if (!metaResult.success || !metaResult.data) throw new Error("Failed to fetch fresh metadata");
 
       const { syncTableMetadata } = await import('../../../../actions/metadata');
-      const organized = metaResult.data.schema.reduce((acc: any, curr: any) => {
-        if (!acc[curr.table_name]) {
-          acc[curr.table_name] = { name: curr.table_name, columns: [] };
-        }
-        acc[curr.table_name].columns.push(curr);
-        return acc;
-      }, {});
+      const targetTables = ["cars", "customers", "sales"];
+      const organized = metaResult.data.schema
+        .filter((curr: any) => id !== DEFAULT_CONNECTION_ID || targetTables.includes(curr.table_name.toLowerCase()))
+        .reduce((acc: any, curr: any) => {
+          if (!acc[curr.table_name]) {
+            acc[curr.table_name] = { name: curr.table_name, columns: [] };
+          }
+          acc[curr.table_name].columns.push(curr);
+          return acc;
+        }, {});
 
       const tableSync = await syncTableMetadata(id, Object.values(organized));
       if (!tableSync.success) throw new Error(tableSync.error || "Table sync failed");

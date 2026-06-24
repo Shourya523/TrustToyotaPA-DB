@@ -115,7 +115,11 @@ export async function syncTableMetadata(connectionId: string, parsedTables: any[
             }
         }
 
-        revalidatePath(`/dashboard/tables/${connectionId}`);
+        try {
+            revalidatePath(`/dashboard/tables/${connectionId}`);
+        } catch (e) {
+            console.log("revalidatePath skipped (run from outside Next.js request context)");
+        }
         return { success: true };
 
     } catch (error: any) {

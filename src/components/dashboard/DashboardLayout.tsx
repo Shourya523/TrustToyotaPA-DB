@@ -24,8 +24,6 @@ import {
 import { ThemeToggle } from "../theme-toggle";
 import { useState, useEffect } from "react";
 import { authClient } from "@/src/components/landing/auth";
-import VoiceMicAssistant from "../showroom/VoiceMicAssistant";
-
 import GlobalAIChatDrawer from "./GlobalAIChatDrawer";
 
 const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
@@ -194,7 +192,6 @@ const DashboardLayout = ({ children }: { children: React.ReactNode }) => {
             </div>
           )}
         </main>
-        <VoiceMicAssistant />
         <GlobalAIChatDrawer />
       </div>
     </div>

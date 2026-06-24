@@ -104,31 +104,64 @@ Return Markdown only.`
         for (const entity of dbEntities) {
             const tableFields = dbFields.filter(f => f.entityId === entity.id);
 
-            // Query Neo4j for exact relationships hitting this specific node
-            const neo4jResult = await session.executeRead(async (tx: any) => {
-                const query = `
-                    MATCH (e:Entity {id: $entityId})-[:HAS_FIELD]->(sourceBase:Field)
-                    OPTIONAL MATCH (sourceBase)-[:REFERENCES_FIELD]->(targetField:Field)<-[:HAS_FIELD]-(targetEntity:Entity)
-                    RETURN sourceBase, targetField, targetEntity
-                `;
-                return await tx.run(query, { entityId: entity.id });
-            });
-
-            // Parse Neo4j relationships safely
             const parsedRelationships: any[] = [];
-            neo4jResult.records.forEach((record: any) => {
-                const srcBase = record.get('sourceBase');
-                const tgtField = record.get('targetField');
-                const tgtEntity = record.get('targetEntity');
+            try {
+                // Query Neo4j for exact relationships hitting this specific node
+                const neo4jResult = await session.executeRead(async (tx: any) => {
+                    const query = `
+                        MATCH (e:Entity {id: $entityId})-[:HAS_FIELD]->(sourceBase:Field)
+                        OPTIONAL MATCH (sourceBase)-[:REFERENCES_FIELD]->(targetField:Field)<-[:HAS_FIELD]-(targetEntity:Entity)
+                        RETURN sourceBase, targetField, targetEntity
+                    `;
+                    return await tx.run(query, { entityId: entity.id });
+                });
 
-                if (tgtField && tgtEntity) {
-                    parsedRelationships.push({
-                        field: srcBase.properties.name,
-                        references_table: tgtEntity.properties.name,
-                        references_field: tgtField.properties.name
-                    });
+                // Parse Neo4j relationships safely
+                neo4jResult.records.forEach((record: any) => {
+                    const srcBase = record.get('sourceBase');
+                    const tgtField = record.get('targetField');
+                    const tgtEntity = record.get('targetEntity');
+
+                    if (tgtField && tgtEntity) {
+                        parsedRelationships.push({
+                            field: srcBase.properties.name,
+                            references_table: tgtEntity.properties.name,
+                            references_field: tgtField.properties.name
+                        });
+                    }
+                });
+            } catch (neoErr: any) {
+                console.warn(`[RAG Backend] Neo4j query failed, falling back to PostgreSQL metadata for table ${entity.name}:`, neoErr.message);
+                
+                // Fallback: Query relationships from local postgres tables
+                const sourceFieldIds = tableFields.map(f => f.id);
+                if (sourceFieldIds.length > 0) {
+                    const relRows = await db
+                        .select()
+                        .from(relationships)
+                        .where(inArray(relationships.sourceFieldId, sourceFieldIds));
+                    
+                    const targetFieldIds = relRows.map(r => r.targetFieldId);
+                    if (targetFieldIds.length > 0) {
+                        const targetFields = await db.select().from(fields).where(inArray(fields.id, targetFieldIds));
+                        const targetEntityIds = targetFields.map(f => f.entityId);
+                        const targetEntities = await db.select().from(entities).where(inArray(entities.id, targetEntityIds));
+
+                        relRows.forEach(r => {
+                            const srcField = tableFields.find(f => f.id === r.sourceFieldId);
+                            const tgtField = targetFields.find(f => f.id === r.targetFieldId);
+                            const tgtEntity = tgtField ? targetEntities.find(e => e.id === tgtField.entityId) : null;
+                            if (srcField && tgtField && tgtEntity) {
+                                parsedRelationships.push({
+                                    field: srcField.name,
+                                    references_table: tgtEntity.name,
+                                    references_field: tgtField.name
+                                });
+                            }
+                        });
+                    }
                 }
-            });
+            }
 
             // Construct exact JSON syntax requested
             const payload = {
@@ -298,17 +331,10 @@ function extractSqlFromResponse(text: string): string {
 
 export async function getCompleteSchemaContext(connectionId: string): Promise<string> {
     const TOYOTA_FALLBACK_SCHEMA = `
-Table "branch": [branch_id (integer PRIMARY KEY), street (varchar NOT NULL), city (varchar NOT NULL), building_number (integer), contact_number (integer)]
-Table "employee": [ssn (integer PRIMARY KEY), fname (varchar NOT NULL), lname (varchar NOT NULL), gender (char), birth_date (date), phone_1 (varchar), city (varchar), job_id (integer), branch_id (integer)]
-Table "job": [job_id (integer PRIMARY KEY), title (varchar NOT NULL)]
-Table "salary_of_jobs": [emp_ssn (integer PRIMARY KEY), salary (integer), comm_pct (numeric)]
-Table "contract": [contract_id (integer PRIMARY KEY), car_id (integer), branch_id (integer), emp_ssn (integer), cust_ssn (integer), method_id (integer), contract_date (date NOT NULL)]
-Table "payment_method": [method_id (integer PRIMARY KEY), method (varchar NOT NULL)]
-Table "car": [car_id (integer PRIMARY KEY), company_id (integer), model (varchar NOT NULL), year (date)]
-Table "company": [company_id (integer PRIMARY KEY), name (varchar NOT NULL)]
-Table "customer": [ssn (integer PRIMARY KEY), fname (varchar NOT NULL), lname (varchar NOT NULL), gender (char), phone_1 (varchar), city (varchar)]
-Table "color": [color_id (integer PRIMARY KEY), name (varchar NOT NULL)]
-Table "car_color": [car_id (integer), color_id (integer)]
+Table "cars": [car_id (varchar PRIMARY KEY), brand (varchar), model (varchar), year (integer), color (varchar), engine_type (varchar), transmission (varchar), price (numeric), quantity_in_stock (integer), status (varchar)]
+Table "customers": [customer_id (varchar PRIMARY KEY), name (varchar), gender (varchar), age (integer), phone (varchar), email (varchar), city (varchar)]
+Table "sales": [sale_id (varchar PRIMARY KEY), customer_id (varchar REFERENCES customers.customer_id), car_id (varchar REFERENCES cars.car_id), sale_date (date), quantity (integer), sale_price (numeric), salesperson (varchar), payment_method (varchar)]
+Note on Showrooms/Branches: There is no physical showroom or branch table. To query sales by branch/showroom, filter or group by the customer's city (customers.city) and virtualize: Cairo maps to Sheraton Showroom, Alexandria to Smouha Showroom, Giza to El Haram Showroom, Suez to El Canal Showroom, Port Said to Port Said Port.
 `;
 
     let neo4jRelationships = "";

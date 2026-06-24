@@ -22,6 +22,8 @@ import {
   HelpCircle,
   ArrowRight,
   MessageSquare,
+  Mic,
+  MicOff,
 } from "lucide-react";
 import {
   BarChart,
@@ -63,7 +65,7 @@ const CHART_COLORS = ["hsl(0 72% 51%)", "hsl(25 95% 53%)", "hsl(45 93% 47%)", "h
 const QUICK_PROMPTS = [
   { label: "Mostly Sold Cars", text: "Which car models are mostly sold?", icon: Car },
   { label: "Top Sales Reps", text: "Who sold the most cars and what is their total revenue?", icon: Users },
-  { label: "Showroom Branches", text: "List all active showrooms and their locations.", icon: MapPin },
+  { label: "City Revenue", text: "What is the total revenue and count of sales in each city?", icon: MapPin },
   { label: "Revenue Trend", text: "Show our monthly revenue trend.", icon: TrendingUp },
 ];
 
@@ -77,20 +79,94 @@ export default function ShowroomAssistantPage() {
       id: "welcome",
       role: "assistant",
       content: `Hello! I am your **Trust Toyota Showroom AI Assistant**. 
-
-You can ask me questions about your showroom network, employee performance, or vehicle sales in plain English, and I will translate it to queries and provide visual insights.
-
+Playground Canvas can also help you visually inspect relations, but here you can ask me questions about vehicle sales, employee performance, or customer demographics in plain English, and I will translate it to queries and provide visual insights.
+ 
 *Example questions you can ask:*
 - *Which cars were mostly sold?*
-- *Who sold the most cars and what is their total commission?*
+- *Who sold the most cars and what is their total revenue?*
 - *Show me our monthly revenue trend.*
-- *List all showrooms.*
-
+- *What is the total revenue and count of sales in each city?*
+ 
 Alternatively, feel free to enter direct PostgreSQL \`SELECT\` queries!`,
     },
   ]);
   const [isPending, setIsPending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Voice Assistant States and Refs
+  const [isSupported, setIsSupported] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  const finalTextRef = useRef("");
+
+  // Initialize SpeechRecognition on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const SpeechRecognition =
+        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        setIsSupported(true);
+        const recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = true;
+        recognition.lang = "en-US";
+
+        recognition.onstart = () => {
+          setIsListening(true);
+          finalTextRef.current = "";
+        };
+
+        recognition.onresult = (event: any) => {
+          let interimTranscript = "";
+          let finalTranscript = "";
+
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              finalTranscript += event.results[i][0].transcript;
+            } else {
+              interimTranscript += event.results[i][0].transcript;
+            }
+          }
+          const currentText = finalTranscript || interimTranscript;
+          setInput(currentText);
+          if (finalTranscript.trim()) {
+            finalTextRef.current = finalTranscript.trim();
+          }
+        };
+
+        recognition.onerror = (event: any) => {
+          console.error("Speech recognition error:", event.error);
+          setIsListening(false);
+        };
+
+        recognition.onend = () => {
+          setIsListening(false);
+          const textToSubmit = finalTextRef.current.trim();
+          if (textToSubmit) {
+            handleSendMessage(textToSubmit);
+            finalTextRef.current = "";
+          }
+        };
+
+        recognitionRef.current = recognition;
+      }
+    }
+  }, []);
+
+  const toggleListening = () => {
+    if (!isSupported) return;
+    if (isListening) {
+      finalTextRef.current = ""; // cancel auto-submit
+      recognitionRef.current?.stop();
+    } else {
+      setInput("");
+      try {
+        recognitionRef.current?.start();
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  };
 
   // Fetch connections on load
   useEffect(() => {
@@ -216,16 +292,14 @@ Alternatively, feel free to enter direct PostgreSQL \`SELECT\` queries!`,
     }
   };
 
-  // Automatically execute voice queries redirected from the floating microphone button
+  // Process initial voice queries if redirected from legacy routes
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const voiceQuery = params.get("voice_query");
       if (voiceQuery) {
-        // Clear search parameters without page refresh
         const cleanUrl = window.location.pathname;
         window.history.replaceState({}, "", cleanUrl);
-        // Trigger SQL generation and execution
         handleSendMessage(voiceQuery);
       }
     }
@@ -474,14 +548,14 @@ Alternatively, feel free to enter direct PostgreSQL \`SELECT\` queries!`,
                 {[
                   {
                     title: "Luxury Sales Specialists",
-                    description: "Retrieve representatives who sold the most cars in the luxury bracket (>= 1.5M EGP).",
-                    query: "Who sold the most luxury cars and what is their total revenue?",
+                    description: "Retrieve representatives who sold the most cars in the luxury bracket (>= 50,000).",
+                    query: "Who sold the most luxury cars (price >= 50000) and what is their total revenue?",
                     icon: Users,
                   },
                   {
-                    title: "Showroom Stock Warnings",
-                    description: "Check which showrooms have low inventory of specific car models (under 5 units).",
-                    query: "Show showroom car models with low inventory under 5 units.",
+                    title: "Car Stock Warnings",
+                    description: "Check which cars have low stock inventory (under 5 units).",
+                    query: "Show cars with low quantity in stock under 5 units.",
                     icon: Car,
                   },
                   {
@@ -551,22 +625,67 @@ Alternatively, feel free to enter direct PostgreSQL \`SELECT\` queries!`,
           </div>
 
           {/* Form Text Input */}
-          <form onSubmit={handleFormSubmit} className="flex gap-2">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              disabled={isPending}
-              placeholder="Ask a question in plain English or write direct SQL..."
-              className="flex-1 h-12 rounded-xl border border-input bg-card/30 px-4 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-red-500/50 transition-colors"
-            />
-            <Button
-              type="submit"
-              disabled={isPending || !input.trim()}
-              className="h-12 w-12 rounded-xl flex items-center justify-center shrink-0 bg-red-600 hover:bg-red-700 text-white border-none"
-            >
-              <Send className="w-4 h-4" />
-            </Button>
+          <form onSubmit={handleFormSubmit} className="flex flex-col gap-2">
+            {isListening && (
+              <div className="flex items-center gap-2 px-3 py-1 bg-red-500/5 border border-red-500/10 rounded-lg self-start">
+                <div className="flex items-center gap-0.5 h-3">
+                  {[0.4, 0.8, 0.5, 0.9, 0.4].map((delay, idx) => (
+                    <div
+                      key={idx}
+                      className="w-0.5 bg-red-500 rounded-full animate-pulse"
+                      style={{
+                        height: "100%",
+                        animationDuration: `${delay}s`,
+                        animationDelay: `${idx * 0.05}s`,
+                      }}
+                    />
+                  ))}
+                </div>
+                <span className="text-[9px] text-red-500 font-bold uppercase tracking-wider">Listening to your voice...</span>
+              </div>
+            )}
+            <div className="flex gap-2 items-center">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  disabled={isPending}
+                  placeholder={isListening ? "Listening..." : "Ask a question in plain English or write direct SQL..."}
+                  className={`w-full h-12 rounded-xl border border-input bg-card/30 pl-4 pr-12 text-sm outline-none placeholder:text-muted-foreground/60 focus:border-red-500/50 transition-all ${
+                    isListening ? "border-red-500/50 bg-red-500/5 placeholder:text-red-500/60 font-medium italic" : ""
+                  }`}
+                />
+                {isSupported && (
+                  <button
+                    type="button"
+                    onClick={toggleListening}
+                    className={`absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-lg transition-all ${
+                      isListening
+                        ? "text-red-500 hover:bg-red-500/10 animate-pulse"
+                        : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                    }`}
+                    title="Voice Search"
+                  >
+                    {isListening ? (
+                      <div className="relative flex items-center justify-center">
+                        <MicOff className="w-4 h-4 text-red-500" />
+                        <span className="absolute -inset-1 rounded-full border border-red-500/30 animate-ping" />
+                      </div>
+                    ) : (
+                      <Mic className="w-4 h-4" />
+                    )}
+                  </button>
+                )}
+              </div>
+              <Button
+                type="submit"
+                disabled={isPending || !input.trim()}
+                className="h-12 w-12 rounded-xl flex items-center justify-center shrink-0 bg-red-600 hover:bg-red-700 text-white border-none"
+              >
+                <Send className="w-4 h-4" />
+              </Button>
+            </div>
           </form>
         </div>
       </div>

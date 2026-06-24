@@ -42,7 +42,7 @@ import {
   Area,
   Legend,
 } from "recharts";
-import EgyptMap, { EgyptMapLegend } from "./EgyptMap";
+import USAMap, { USAMapLegend } from "./USAMap";
 import CityShowroomsPanel from "./CityShowroomsPanel";
 import ShowroomDetailPanel from "./ShowroomDetailPanel";
 import {
@@ -412,7 +412,6 @@ export default function ShowroomOverview() {
       const savedFileName = localStorage.getItem("toyota_raw_csv_filename");
       if (savedText && savedFileName) {
         handleCSVText(savedText, savedFileName);
-        setMode("csv");
       }
     }
   }, []);
@@ -1117,17 +1116,17 @@ export default function ShowroomOverview() {
                       <div className="px-5 py-4 border-b border-border flex items-center justify-between gap-4">
                         <div className="flex items-center gap-2">
                           <MapPin className="w-4 h-4 text-primary" />
-                          <h2 className="text-sm font-semibold">Egypt Showroom Map</h2>
+                          <h2 className="text-sm font-semibold">USA Showroom Map</h2>
                         </div>
                         {activeStats && (
-                          <EgyptMapLegend
+                          <USAMapLegend
                             cityCount={activePoints.filter((c) => c.branchCount > 0).length}
                             branchCount={activeStats.totalBranches}
                           />
                         )}
                       </div>
                       <div className="p-4 sm:p-6">
-                        <EgyptMap cities={activePoints} selectedCity={selectedCity} onCitySelect={handleCitySelect} />
+                        <USAMap cities={activePoints} selectedCity={selectedCity} onCitySelect={handleCitySelect} />
                       </div>
 
                       {view === "map" && activeStats && (
@@ -1818,7 +1817,7 @@ export default function ShowroomOverview() {
                         <h3 className="text-sm font-semibold">Sales Volume by Price Bracket</h3>
                       </div>
                       <p className="text-[11px] text-muted-foreground leading-normal">
-                        Reps segregated by Mid-Budget (&lt; 1.5M EGP) vs. Luxury (&ge; 1.5M EGP) units sold.
+                        Reps segregated by Mid-Budget (&lt; $50K) vs. Luxury (&ge; $50K) units sold.
                       </p>
                       
                       {simEmployeesData.filter(e => e.carsSold > 0).length > 0 ? (
