@@ -38,8 +38,9 @@ import {
   PieChart,
   Pie,
   Cell,
-  AreaChart,
   Area,
+  RadialBarChart,
+  RadialBar,
 } from "recharts";
 import { formatCurrency } from "@/src/lib/showroom-types";
 
@@ -62,6 +63,31 @@ type Message = {
 const DEMO_ID = DEFAULT_CONNECTION_ID;
 const CHART_COLORS = ["hsl(0 72% 51%)", "hsl(25 95% 53%)", "hsl(45 93% 47%)", "hsl(145 63% 42%)", "hsl(200 75% 45%)"];
 
+const queryLatencyData = [
+  { day: "Mon", ms: 120 },
+  { day: "Tue", ms: 145 },
+  { day: "Wed", ms: 110 },
+  { day: "Thu", ms: 210 },
+  { day: "Fri", ms: 180 },
+  { day: "Sat", ms: 90 },
+  { day: "Sun", ms: 85 },
+];
+
+const queryStatusData = [
+  { name: "Success", value: 850 },
+  { name: "Timeout", value: 42 },
+  { name: "Error", value: 108 },
+];
+
+const queryTypeData = [
+  { name: "SELECT", value: 750, fill: "hsl(200 75% 45%)" },
+  { name: "INSERT", value: 100, fill: "hsl(145 63% 42%)" },
+  { name: "UPDATE", value: 120, fill: "hsl(25 95% 53%)" },
+  { name: "DELETE", value: 30, fill: "hsl(0 72% 51%)" },
+];
+
+const STATUS_COLORS = ["hsl(145 63% 42%)", "hsl(45 93% 47%)", "hsl(0 72% 51%)"];
+
 const QUICK_PROMPTS = [
   { label: "Mostly Sold Cars", text: "Which car models are mostly sold?", icon: Car },
   { label: "Top Sales Reps", text: "Who sold the most cars and what is their total revenue?", icon: Users },
@@ -74,6 +100,7 @@ export default function ShowroomAssistantPage() {
   const [connections, setConnections] = useState<any[]>([]);
   const [selectedConn, setSelectedConn] = useState(DEMO_ID);
   const [input, setInput] = useState("");
+  const [showHealth, setShowHealth] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
@@ -325,21 +352,94 @@ Alternatively, feel free to enter direct PostgreSQL \`SELECT\` queries!`,
             </p>
           </div>
 
-          <div className="flex items-center gap-2 self-start sm:self-center bg-secondary/30 border p-1 rounded-xl">
-            <Database className="w-3.5 h-3.5 text-muted-foreground ml-2 shrink-0" />
-            <select
-              className="h-8 w-48 rounded-lg bg-transparent text-xs outline-none pr-2 cursor-pointer font-medium"
-              value={selectedConn}
-              onChange={(e) => setSelectedConn(e.target.value)}
-            >
-              {connections.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" onClick={() => setShowHealth(!showHealth)} className="hidden sm:flex border-primary/20 hover:bg-primary/10 hover:text-primary transition-all">
+              <TrendingUp className="w-4 h-4 mr-2" />
+              {showHealth ? "Hide Health" : "Query Health"}
+            </Button>
+            <div className="flex items-center gap-2 self-start sm:self-center bg-secondary/30 border p-1 rounded-xl">
+              <Database className="w-3.5 h-3.5 text-muted-foreground ml-2 shrink-0" />
+              <select
+                className="h-8 w-48 rounded-lg bg-transparent text-xs outline-none pr-2 cursor-pointer font-medium"
+                value={selectedConn}
+                onChange={(e) => setSelectedConn(e.target.value)}
+              >
+                {connections.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
+
+        {/* Query Health Dashboard */}
+        {showHealth && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-in slide-in-from-top-4 fade-in duration-300">
+            <Card className="p-4 bg-card/60 backdrop-blur-xl border-white/5 shadow-lg">
+              <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"><TrendingUp className="w-4 h-4 text-primary" /> Average Query Latency (ms)</h3>
+              <div className="h-[200px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={queryLatencyData} margin={{ top: 5, right: 20, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="latencyGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.8} />
+                        <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0.2} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" />
+                    <XAxis dataKey="day" tick={{ fontSize: 10 }} className="fill-muted-foreground" axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10 }} className="fill-muted-foreground" axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={{ fontSize: 12, borderRadius: '12px', border: '1px solid hsl(var(--border))', background: 'hsla(var(--card)/0.8)', backdropFilter: 'blur(8px)', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
+                    <Line type="monotone" dataKey="ms" stroke="url(#latencyGradient)" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+
+            <Card className="p-4 bg-card/60 backdrop-blur-xl border-white/5 shadow-lg">
+              <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"><PieChart className="w-4 h-4 text-amber-500" /> Query Status</h3>
+              <div className="h-[200px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={queryStatusData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={2} dataKey="value" stroke="none">
+                      {queryStatusData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={STATUS_COLORS[index % STATUS_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ fontSize: 12, borderRadius: '12px', border: '1px solid hsl(var(--border))', background: 'hsla(var(--card)/0.8)', backdropFilter: 'blur(8px)', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="flex justify-center gap-4 mt-2 text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
+                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full shadow-sm bg-[hsl(145_63%_42%)]"></span>Success</div>
+                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full shadow-sm bg-[hsl(45_93%_47%)]"></span>Timeout</div>
+                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full shadow-sm bg-[hsl(0_72%_51%)]"></span>Error</div>
+              </div>
+            </Card>
+
+            <Card className="p-4 bg-card/60 backdrop-blur-xl border-white/5 shadow-lg">
+              <h3 className="text-sm font-semibold mb-4 flex items-center gap-2"><Database className="w-4 h-4 text-blue-500" /> Query Type Breakdown</h3>
+              <div className="h-[200px] w-full relative">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RadialBarChart cx="50%" cy="50%" innerRadius="30%" outerRadius="100%" barSize={10} data={queryTypeData}>
+                    <RadialBar
+                      background={{ fill: 'hsl(var(--muted)/0.3)' }}
+                      dataKey="value"
+                      cornerRadius={10}
+                    />
+                    <Tooltip contentStyle={{ fontSize: 12, borderRadius: '12px', border: '1px solid hsl(var(--border))', background: 'hsla(var(--card)/0.8)', backdropFilter: 'blur(8px)', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
+                  </RadialBarChart>
+                </ResponsiveContainer>
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
+                  <p className="text-2xl font-black">{queryTypeData.reduce((acc, curr) => acc + curr.value, 0)}</p>
+                  <p className="text-[9px] uppercase tracking-widest text-muted-foreground">Total</p>
+                </div>
+              </div>
+            </Card>
+          </div>
+        )}
 
         {/* Message Log Thread */}
         <div className="flex-1 overflow-y-auto px-1 space-y-4">

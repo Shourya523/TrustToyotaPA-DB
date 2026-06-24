@@ -24,7 +24,9 @@ import {
   Code2,
   Table2,
   Zap,
+  BarChart3,
 } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 import { DEFAULT_CONNECTION_ID } from "@/src/lib/database-uri";
 
@@ -383,6 +385,28 @@ export default function ImpactSimulatorPage() {
                 </div>
               </Card>
             )}
+
+            <Card className="p-4 space-y-4">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <BarChart3 className="w-4 h-4 text-primary" /> Visual Blast Radius
+              </h3>
+              <div className="h-[250px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={[
+                    { name: "Upstream", count: result.lineage.upstream.length },
+                    { name: "Downstream", count: result.lineage.downstream.length },
+                    { name: "APIs", count: result.apiEndpoints.length },
+                    { name: "Foreign Keys", count: result.foreignKeyImpacts.length }
+                  ]} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" />
+                    <XAxis dataKey="name" tick={{ fontSize: 10 }} className="fill-muted-foreground" />
+                    <YAxis tick={{ fontSize: 10 }} className="fill-muted-foreground" />
+                    <Tooltip contentStyle={{ fontSize: 12, borderRadius: '8px', border: '1px solid hsl(var(--border))', background: 'hsl(var(--card))' }} cursor={{ fill: 'hsl(var(--muted)/0.4)' }} />
+                    <Bar dataKey="count" fill="hsl(0 72% 51%)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
 
             <Button variant="outline" onClick={() => { setStep(1); setResult(null); }}>
               Run Another Simulation

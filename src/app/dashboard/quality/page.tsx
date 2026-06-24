@@ -8,6 +8,17 @@ import { authClient } from "@/src/components/landing/auth";
 import { Card } from "../../../components/ui/card";
 import { Button } from "../../../components/ui/button";
 import { Loader2, AlertTriangle, CheckCircle2, BarChart3, Sparkles, Database, Search } from "lucide-react";
+import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, Area, Line, Legend } from "recharts";
+import { motion } from "framer-motion";
+
+const freshnessData = [
+  { time: '00:00', writes: 12, reads: 400 },
+  { time: '04:00', writes: 5, reads: 300 },
+  { time: '08:00', writes: 80, reads: 1200 },
+  { time: '12:00', writes: 150, reads: 2500 },
+  { time: '16:00', writes: 130, reads: 2200 },
+  { time: '20:00', writes: 45, reads: 800 },
+];
 
 
 export default function QualityPage() {
@@ -188,8 +199,88 @@ export default function QualityPage() {
             </Card>
           </div>
 
+          {/* Visual Analytics */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+            {/* Radar Chart for Table Health */}
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+              <Card className="p-4 flex flex-col items-center bg-card/60 backdrop-blur-xl border-white/5 shadow-lg">
+                <h3 className="font-bold text-sm w-full text-left mb-2">Column Health Overview</h3>
+                <div className="h-[250px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadarChart data={qualityData.metrics.map((m: any) => ({
+                      subject: m.column.length > 10 ? m.column.substring(0, 10) + '...' : m.column,
+                      completeness: m.completeness,
+                      uniqueness: m.uniqueness
+                    }))}>
+                      <PolarGrid stroke="hsl(var(--border))" />
+                      <PolarAngleAxis dataKey="subject" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} />
+                      <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                      <Radar name="Completeness" dataKey="completeness" stroke="hsl(145 63% 42%)" fill="hsl(145 63% 42%)" fillOpacity={0.4} />
+                      <Radar name="Uniqueness" dataKey="uniqueness" stroke="hsl(200 75% 45%)" fill="hsl(200 75% 45%)" fillOpacity={0.4} />
+                      <Tooltip contentStyle={{ fontSize: 12, borderRadius: '12px', border: '1px solid hsl(var(--border))', background: 'hsla(var(--card)/0.8)', backdropFilter: 'blur(8px)', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="flex gap-4 mt-2">
+                  <div className="flex items-center gap-1 text-[10px] uppercase font-bold text-muted-foreground"><div className="w-2 h-2 rounded-full shadow-sm bg-[hsl(145_63%_42%)]"></div> Completeness</div>
+                  <div className="flex items-center gap-1 text-[10px] uppercase font-bold text-muted-foreground"><div className="w-2 h-2 rounded-full shadow-sm bg-[hsl(200_75%_45%)]"></div> Uniqueness</div>
+                </div>
+              </Card>
+            </motion.div>
+
+            {/* Bar Chart for Completeness */}
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+              <Card className="p-4 flex flex-col bg-card/60 backdrop-blur-xl border-white/5 shadow-lg">
+                <h3 className="font-bold text-sm mb-2">Completeness by Column</h3>
+                <div className="h-[250px] w-full mt-2">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={qualityData.metrics} margin={{ top: 10, right: 10, left: -20, bottom: 25 }}>
+                      <defs>
+                        <linearGradient id="completeBar" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="hsl(0 72% 51%)" stopOpacity={0.8} />
+                          <stop offset="100%" stopColor="hsl(0 72% 51%)" stopOpacity={0.4} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" className="stroke-border" vertical={false} />
+                      <XAxis dataKey="column" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} angle={-45} textAnchor="end" axisLine={false} tickLine={false} />
+                      <YAxis domain={[0, 100]} tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} axisLine={false} tickLine={false} />
+                      <Tooltip contentStyle={{ fontSize: 12, borderRadius: '12px', border: '1px solid hsl(var(--border))', background: 'hsla(var(--card)/0.8)', backdropFilter: 'blur(8px)', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} cursor={{ fill: 'hsl(var(--muted)/0.4)' }} />
+                      <Bar dataKey="completeness" fill="url(#completeBar)" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </Card>
+            </motion.div>
+          </div>
+
+          {/* Freshness Timeline */}
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="mt-4">
+            <Card className="p-4 bg-card/60 backdrop-blur-xl border-white/5 shadow-lg">
+              <h3 className="font-bold text-sm mb-4">Data Freshness over Time</h3>
+              <div className="h-[220px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={freshnessData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="writeGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="hsl(145 63% 42%)" stopOpacity={0.5} />
+                        <stop offset="100%" stopColor="hsl(145 63% 42%)" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" />
+                    <XAxis dataKey="time" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={{ fontSize: 12, borderRadius: '12px', border: '1px solid hsl(var(--border))', background: 'hsla(var(--card)/0.8)', backdropFilter: 'blur(8px)', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
+                    <Legend wrapperStyle={{ fontSize: 10 }} />
+                    <Area type="monotone" dataKey="writes" name="Data Writes" fill="url(#writeGradient)" stroke="hsl(145 63% 42%)" strokeWidth={2} />
+                    <Line type="monotone" dataKey="reads" name="Data Reads" stroke="hsl(200 75% 45%)" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          </motion.div>
+
           {/* Metric Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
             {qualityData.metrics.map((m: any, index: number) => (
               <Card 
                 key={m.column} 

@@ -41,6 +41,15 @@ import {
   AreaChart,
   Area,
   Legend,
+  ScatterChart,
+  Scatter,
+  ComposedChart,
+  ZAxis,
+  Radar,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
 } from "recharts";
 import USAMap, { USAMapLegend } from "./USAMap";
 import CityShowroomsPanel from "./CityShowroomsPanel";
@@ -340,10 +349,20 @@ function parseCSV(text: string): NationalStats {
   };
 }
 
+// Mock data for Branch Performance Radar
+const branchRadarData = [
+  { subject: 'Satisfaction', Cairo: 120, Alex: 110, fullMark: 150 },
+  { subject: 'Volume', Cairo: 98, Alex: 130, fullMark: 150 },
+  { subject: 'Margin', Cairo: 86, Alex: 100, fullMark: 150 },
+  { subject: 'Growth', Cairo: 99, Alex: 110, fullMark: 150 },
+  { subject: 'Retention', Cairo: 85, Alex: 90, fullMark: 150 },
+  { subject: 'Follow-ups', Cairo: 110, Alex: 85, fullMark: 150 },
+];
+
 export default function ShowroomOverview() {
   const { data: session } = authClient.useSession();
   const [mode, setMode] = useState<"db" | "csv">("db");
-  const [dashboardTab, setDashboardTab] = useState<"map" | "hr" | "projections">("map");
+  const [dashboardTab, setDashboardTab] = useState<"map" | "hr" | "projections" | "executive">("map");
   const [view, setView] = useState<View>("map");
   const [selectedCity, setSelectedCity] = useState<string | null>(null);
   const [selectedBranchId, setSelectedBranchId] = useState<number | null>(null);
@@ -1099,6 +1118,17 @@ export default function ShowroomOverview() {
                 >
                   <TrendingUp className="w-4 h-4" />
                   Projections
+                </button>
+                <button
+                  onClick={() => setDashboardTab("executive")}
+                  className={`pb-3 px-6 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 ${
+                    dashboardTab === "executive"
+                      ? "border-red-600 text-red-600"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  Executive
                 </button>
               </div>
 
@@ -2461,6 +2491,85 @@ export default function ShowroomOverview() {
                         No revenue trends logs recorded.
                       </div>
                     )}
+                  </div>
+                </motion.div>
+              )}
+
+              {dashboardTab === "executive" && (
+                <motion.div
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-6"
+                >
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Composed Chart: Revenue vs Target Trajectory */}
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.4 }} className="rounded-2xl border border-white/5 bg-card/60 backdrop-blur-xl p-5 shadow-lg">
+                      <div className="flex items-center gap-2 mb-4">
+                        <TrendingUp className="w-4 h-4 text-purple-500" />
+                        <h3 className="text-sm font-semibold">National Revenue vs Target Trajectory</h3>
+                      </div>
+                      <div className="h-[350px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart data={combinedTrendData} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                            <defs>
+                              <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="hsl(200 75% 45%)" stopOpacity={0.8} />
+                                <stop offset="100%" stopColor="hsl(200 75% 45%)" stopOpacity={0.2} />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" />
+                            <XAxis dataKey="month" tick={{ fontSize: 10 }} className="fill-muted-foreground" axisLine={false} tickLine={false} />
+                            <YAxis tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`} tick={{ fontSize: 10 }} className="fill-muted-foreground" axisLine={false} tickLine={false} />
+                            <Tooltip contentStyle={{ fontSize: 12, borderRadius: '12px', border: '1px solid hsl(var(--border))', background: 'hsla(var(--card)/0.8)', backdropFilter: 'blur(8px)', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
+                            <Legend wrapperStyle={{ fontSize: 10 }} />
+                            <Bar dataKey="revenue" barSize={20} fill="url(#barGradient)" name="Actual Revenue" radius={[4, 4, 0, 0]} />
+                            <Line type="monotone" dataKey="optimistic" stroke="hsl(145 60% 45%)" strokeWidth={3} name="Target" dot={{ r: 4 }} activeDot={{ r: 6 }} />
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </motion.div>
+
+                    {/* Radar Chart: Branch Multi-dimensional Performance */}
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.4 }} className="rounded-2xl border border-white/5 bg-card/60 backdrop-blur-xl p-5 shadow-lg">
+                      <div className="flex items-center gap-2 mb-4">
+                        <Target className="w-4 h-4 text-blue-500" />
+                        <h3 className="text-sm font-semibold">Branch Performance Matrix</h3>
+                      </div>
+                      <div className="h-[350px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RadarChart cx="50%" cy="50%" outerRadius="70%" data={branchRadarData}>
+                            <PolarGrid stroke="hsl(var(--border))" />
+                            <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} />
+                            <PolarRadiusAxis angle={30} domain={[0, 150]} tick={false} axisLine={false} />
+                            <Tooltip contentStyle={{ fontSize: 12, borderRadius: '12px', border: '1px solid hsl(var(--border))', background: 'hsla(var(--card)/0.8)', backdropFilter: 'blur(8px)', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} />
+                            <Legend wrapperStyle={{ fontSize: 10 }} />
+                            <Radar name="Cairo Branch" dataKey="Cairo" stroke="hsl(0 72% 51%)" fill="hsl(0 72% 51%)" fillOpacity={0.4} />
+                            <Radar name="Alex Branch" dataKey="Alex" stroke="hsl(200 75% 45%)" fill="hsl(200 75% 45%)" fillOpacity={0.4} />
+                          </RadarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </motion.div>
+
+                    {/* Stacked Bar Graph: Showroom Segmentation */}
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.4 }} className="rounded-2xl border border-white/5 bg-card/60 backdrop-blur-xl p-5 shadow-lg lg:col-span-2">
+                      <div className="flex items-center gap-2 mb-4">
+                        <BarChart3 className="w-4 h-4 text-amber-500" />
+                        <h3 className="text-sm font-semibold">Deal Composition by Region</h3>
+                      </div>
+                      <div className="h-[350px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={activeStats?.topBranches?.slice(0, 8) || []} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" />
+                            <XAxis dataKey="name" tick={{ fontSize: 10 }} className="fill-muted-foreground" axisLine={false} tickLine={false} />
+                            <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} tick={{ fontSize: 10 }} className="fill-muted-foreground" axisLine={false} tickLine={false} />
+                            <Tooltip contentStyle={{ fontSize: 12, borderRadius: '12px', border: '1px solid hsl(var(--border))', background: 'hsla(var(--card)/0.8)', backdropFilter: 'blur(8px)', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }} formatter={(val: number) => formatCurrency(val)} />
+                            <Legend wrapperStyle={{ fontSize: 10 }} />
+                            <Bar dataKey="revenue" stackId="a" fill="hsl(25 95% 53%)" name="Mid-Tier Revenue" radius={[0, 0, 4, 4]} />
+                            <Bar dataKey="revenue" stackId="a" fill="hsl(0 72% 51%)" name="Luxury Revenue" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </motion.div>
                   </div>
                 </motion.div>
               )}
