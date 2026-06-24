@@ -17,7 +17,7 @@ async function run() {
             field_schema: "keyword"
         });
         console.log("Success! Payload Index created.");
-    } catch (e: any) {
+    } catch (e) {
         console.error("Payload Index creation failed (it may already exist):", e?.data || e);
     }
 }

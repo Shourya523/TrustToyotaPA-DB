@@ -19,7 +19,7 @@ async function run() {
             }
         });
         console.log("Success! Collection created.");
-    } catch (e: any) {
+    } catch (e) {
         console.error("Creation failed:", e);
     }
 }
